@@ -1,0 +1,1028 @@
+---
+title: "03 - Точність та відбір моделей"
+subtitle: "Machine Learning"
+author: "Ігор Мірошниченко"
+date: today
+date-format: iso
+institute: КНЕУ::ІІТЕ
+crossref:
+  fig-title: Рис.     # (default is "Figure")
+  tbl-title: Таб.     # (default is "Table")
+format:
+  revealjs: 
+    theme: [simple, custom.scss]
+    # footer: <https://t.me/araprof>
+    logo: img/logo.png
+    chalkboard: true
+    slide-number: true
+    toc: true
+    toc-title: ЗМІСТ
+    transition: fade
+    mouse-wheel: true
+    highlight-style: github
+    mainfont: metropolis
+    toc-depth: 1
+    fig-width: 9
+    fig-height: 5
+knitr: 
+  opts_chunk: 
+    echo: true
+    warnings: false
+    message: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(pacman)
+p_load(
+  broom, tidyverse,
+  ggplot2, ggthemes, ggforce, ggridges, cowplot,
+  latex2exp, viridis, extrafont, gridExtra, plotly, ggformula,
+  kableExtra, snakecase, janitor,
+  data.table, dplyr,
+  lubridate, knitr, future, furrr,
+  MASS, estimatr, FNN, caret, parsnip,
+  huxtable, here, magrittr, parallel
+)
+
+
+# Define colors
+red_pink   = "#e64173"
+turquoise  = "#20B2AA"
+orange     = "#FFA500"
+red        = "#fb6107"
+blue       = "#3b3b9a"
+green      = "#8bb174"
+grey_light = "grey70"
+grey_mid   = "grey50"
+grey_dark  = "grey20"
+purple     = "#6A5ACD"
+slate      = "#314f4f"
+```
+
+# Точність моделей
+
+## Огляд: навчання з вчителем {.smaller}
+
+1.  Використовуючи [навчальні дані]{.hi-slate} $\left( \color{#FFA500}{\mathbf{y}},\, \color{#6A5ACD}{\mathbf{X}} \right)$, ми навчаємо $\hat{\color{#20B2AA}{f}}$, оцінюємо $\color{#FFA500}{\mathbf{y}} = \color{#20B2AA}{f}\!(\color{#6A5ACD }{\mathbf{X}}) + \varepsilon$.
+
+. . .
+
+2.  Використовуючи цю розрахункову модель $\hat{\color{#20B2AA}{f}}$, ми *можемо* обчислити [training MSE]{.hi-slate} $$\color{#314f4f}{\text{MSE}_\text{train}} = \dfrac{1}{n} \sum_{1}^n \underbrace{\left[ \color{#FFA500}{ \mathbf{y}}_i - \hat{\color{#20B2AA}{f}}\!\left( \color{#6A5ACD}{x}_i \right) \right]^{2}}_{\text{Квадрат похибки}} = \dfrac{1}{n} \sum_{1}^n \left[ \color{#FFA500}{\mathbf{y}}_i - \hat{\color{#FFA500}{ \mathbf{y}}} \right]^2$$
+
+. . .
+
+3.  Ми хочемо, щоб модель точно передбачала раніше невідомі ([test]{.hi-pink}) дані. Цю мету іноді називають [узагальнення / generalization]{.attn} або [зовнішня валідність]{.attn}.
+
+Середнє $\left[\color{#e64173}{y_0} - \hat{\color{#20B2AA}{f}}\!\left( \color{#e64173}{x_0} \right) \right]^2$ для спостережень $\left( \color{#e64173}{y_0},\, \color{#e64173}{x_0} \right)$ на нашій [тестовій вибірці]{.hi-pink}.
+
+------------------------------------------------------------------------
+
+## Помилки
+
+Елемент, який знаходиться в центрі нашої уваги, це (у тестовій вибірці) **помилка передбачення** $$\color{#FFA500}{\mathbf{y}}_i - \hat{\color{#20B2AA}{f}}\!\left( \color{#6A5ACD}{x}_i \right) = \color{#FFA500}{\mathbf{y}}_i - \hat{\color{#FFA500}{\mathbf{y}}}_i$$ різниця між міткою $\left( \color{#FFA500}{\mathbf{y}} \right)$ та її прогнозом $\left( \hat{\color{#FFA500}{\mathbf{y}}} \right)$.
+
+Відстань (*тобто* невід'ємне значення) між справжнім значенням і його прогнозом часто називають **loss**.
+
+## Loss функції
+
+**Loss функції** агрегують та кількісно визначають похибки.
+
+**L1** функція втрат: $\sum_i \big| y_i - \hat{y}_i \big|$    **MAE**: $\dfrac{1}{n}\sum_i \big| y_i - \hat{y}_i \big|$
+
+**L2** функція втрат: $\sum_i \left( y_i - \hat{y}_i \right)^2$   **MSE**: $\dfrac{1}{n} \sum_i \left( y_i - \hat{y}_i \right)^2$
+
+. . .
+
+<br> Зверніть увагу, що **обидві функції накладають припущення**.
+
+1.  Обидві припускають, що **переоцінка** однаково погана, як і **недооцінка**.
+
+2.  Обидві припускають, що помилки однаково шкідливі для **всіх** $(i)$.
+
+3.  Вони відрізняються у своїх припущеннях щодо **величини помилок**.
+
+    -   **L1** додаткова одиниця помилки скрізь **однаково погано**.
+    -   **L2** додаткова одиниця помилки **гірше**, коли помилка вже велика.
+
+------------------------------------------------------------------------
+
+Дуже простий одновимірний набір даних $\left(\mathbf{y},\, \mathbf{x} \right)$
+
+```{r, data loss, echo = F, cache = T}
+# Sample size
+n = 30
+# Sample
+set.seed(12345)
+loss_df = tibble(
+  x = runif(n = n, min = 0, max = 5),
+  y = 1 + x + rnorm(n, sd = 1.5),
+  y_hat = lm(y ~ x)$fitted.values,
+  loss = abs(y - y_hat)
+)
+# Base graph
+loss_gg = ggplot(data = loss_df, aes(x = x, y = y)) +
+theme_void()
+```
+
+```{r, graph loss 1, echo = F, cache = T, dependson = "data loss"}
+loss_gg +
+geom_point(size = 3.5)
+```
+
+------------------------------------------------------------------------
+
+... на якому ми виконуємо [просту лінійну регресію]{.pink}.
+
+```{r, graph loss 2, echo = F, cache = T, dependson = "data loss"}
+loss_gg +
+geom_smooth(color = red_pink, se = F, method = lm, size = 1.3) +
+geom_point(size = 3.5)
+```
+
+------------------------------------------------------------------------
+
+Кожна точка $\left( y_i,\, x_i \right)$ пов'язана з [loss]{.grey-mid} (помилка).
+
+```{r, graph loss 3, echo = F, cache = T, dependson = "data loss"}
+loss_gg +
+geom_segment(aes(x = x, xend = x, y = y, yend = y_hat), color = "grey70") +
+geom_smooth(color = red_pink, se = F, method = lm, size = 1.3) +
+geom_point(size = 3.5)
+```
+
+------------------------------------------------------------------------
+
+Функція втрат L1 зважує всі помилки однаково: $\sum_i \big| y_i - \hat{y}_i \big|$
+
+```{r, graph loss 4, echo = F, cache = T, dependson = "data loss"}
+loss_gg +
+geom_segment(aes(x = x, xend = x, y = y, yend = y_hat, color = abs(loss))) +
+geom_smooth(color = red_pink, se = F, method = lm, size = 1.3) +
+geom_point(size = 3.5) +
+scale_color_viridis_c(option = "magma", end = 0.95) +
+theme(legend.position = "none")
+```
+
+------------------------------------------------------------------------
+
+Функція втрат L2 *зважує* похибки: $\sum_i \left( y_i - \hat{y}_i \right)^2$
+
+```{r, graph loss 5, echo = F, cache = T, dependson = "data loss"}
+loss_gg +
+geom_segment(aes(x = x, xend = x, y = y, yend = y_hat, color = loss^2)) +
+geom_smooth(color = red_pink, se = F, method = lm, size = 1.3) +
+geom_point(size = 3.5) +
+scale_color_viridis_c(option = "magma", end = 0.95) +
+theme(legend.position = "none")
+```
+
+------------------------------------------------------------------------
+
+## Overfitting
+
+Так у чому ж справа?
+
+. . .
+
+Ми зіткнулися з компромісом:
+
+-   ускладнити модель для кращого навчання моделі
+
+-   ризикуємо перенавчити модель
+
+. . .
+
+Ми можемо побачити ці компроміси в нашому [test MSE]{.hi-pink} (але не в [training MSE]{.hi-slate}).
+
+------------------------------------------------------------------------
+
+[Навчальна вибірка]{.hi-slate} і сплайни моделей
+
+```{r, sim flexibility, echo = F, cache = T, eval = T, include=FALSE}
+library(future.apply)
+# Function to generate our data
+sim_fun = function(x) (x - 3)^2 * (3 * x + 3) * (x + 5) / 100 + 7
+# Generate data
+set.seed(123)
+flex_train = tibble(
+  x = runif(n = 300, min = -4.25, max = 4.25),
+  y = sim_fun(x) + rnorm(300, sd = 3)
+) %>% data.matrix()
+flex_test = tibble(
+  x = runif(n = 300, min = -4.25, max = 4.25),
+  y = sim_fun(x) + rnorm(300, sd = 3)
+) %>% data.matrix()
+flex_range = seq(from = -4.25, to = 4.25, by = 0.01)
+# Iterate over flexibility parameter
+flex_df = future_lapply(
+  X = seq(0.01, 1.5, 0.01),
+  FUN = function(s) {
+    # Fit spline on training data
+    spline_s = smooth.spline(x = flex_train, spar = s)
+    # MSE
+    mse_train = (flex_train[,"y"] - predict(spline_s, x = flex_train[,"x"])$y)^2 %>% mean()
+    mse_test = (flex_test[,"y"] - predict(spline_s, x = flex_test[,"x"])$y)^2 %>% mean()
+    # Return data frame
+    tibble(
+      s = rep(s, 2),
+      mse_type = c("train", "test"),
+      mse_value = c(mse_train, mse_test)
+    )
+  }
+) %>% bind_rows()
+# Find minima
+min_train = flex_df %>% filter(mse_type == "train") %>% filter(mse_value == min(mse_value))
+min_test = flex_df %>% filter(mse_type == "test") %>% filter(mse_value == min(mse_value))
+```
+
+```{r, save flexibility simulation, include = F, cache = T, dependson = "sim flexibility"}
+saveRDS(
+  object = flex_df,
+  file = here('lecture', "other-files", "flex-sim.rds")
+)
+```
+
+```{r, plot data for flexibility, echo = F}
+ggplot(data = flex_train %>% as.data.frame(), aes(x, y)) +
+stat_function(
+  aes(color = "1", size = "1"), fun = sim_fun, linetype = "longdash"
+) +
+stat_spline(
+  aes(color = "2", size = "2"), spar = min_test$s
+) +
+stat_spline(
+  aes(color = "3", size = "3"), spar = 1.5
+) +
+stat_spline(
+  aes(color = "4", size = "4"), spar = min_train$s
+) +
+geom_point(size = 3.5, shape = 1, color = "grey40") +
+xlab("x") +
+ylab("y") +
+theme_void(base_family = "Fira Sans Book") +
+scale_color_manual(
+  "",
+  values = c("black", magma(3, begin = 0.2, end = 0.9)),
+  labels = c(
+    'Справжня модель',
+    "Сплайн: на основі тесту",
+    'Лінійна підгонка',
+    'Сплайн: на основі навчальної вибірки'
+  )
+) +
+scale_size_manual(
+  "",
+  values = c(0.5, 0.9, 0.9, 1.1),
+  labels = c(
+    'Справжня модель',
+    "Сплайн: на основі тесту",
+    'Лінійна підгонка',
+    'Сплайн: на основі навчальної вибірки'
+  )
+) +
+theme(
+  legend.position = c(0.05, 0.99),
+  legend.justification = c(0,1),
+  axis.title = element_text(size = 20),
+  legend.text = element_text(size = 18)
+)
+```
+
+------------------------------------------------------------------------
+
+```{r, plot flexibility, echo = F}
+ggplot(data = flex_df, aes(x = 1.5 - s, y = mse_value, color = mse_type)) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_line(size = 1.2) +
+geom_point(data = bind_rows(min_train, min_test), size = 3.5) +
+xlab("Model flexibility") +
+ylab("MSE") +
+scale_color_viridis_d(
+  "", labels = c("Test MSE", "Train MSE"),
+  option = "magma", begin = 0.2, end = 0.9
+) +
+theme_void(base_family = "Fira Sans Book") +
+theme(
+  legend.position = c(0.9, 0.65),
+  axis.title = element_text(size = 20, vjust = 1),
+  axis.title.y = element_text(angle = 90),
+  legend.text = element_text(size = 18)
+)
+```
+
+------------------------------------------------------------------------
+
+Попередній приклад має досить нелінійну залежність.
+
+[Q]{.qa} Що відбувається, коли істина фактично лінійна?
+
+------------------------------------------------------------------------
+
+```{r, sim linear flexibility, echo = F, cache = T, eval = T, include=FALSE}
+# Function to generate our data
+sim_linear = function(x) 7 + 3 * x
+# Generate data
+set.seed(123)
+lin_train = tibble(
+  x = runif(n = 300, min = -4.25, max = 4.25),
+  y = sim_linear(x) + rnorm(300, sd = 3)
+) %>% data.matrix()
+lin_test = tibble(
+  x = runif(n = 300, min = -4.25, max = 4.25),
+  y = sim_linear(x) + rnorm(300, sd = 3)
+) %>% data.matrix()
+lin_range = seq(from = -4.25, to = 4.25, by = 0.01)
+# Iterate over flexibility parameter
+lin_df = mclapply(
+  X = seq(0.01, 1.5, 0.01),
+  FUN = function(s) {
+    # Fit spline on training data
+    spline_s = smooth.spline(x = lin_train, spar = s)
+    # MSE
+    mse_train = (lin_train[,"y"] - predict(spline_s, x = lin_train[,"x"])$y)^2 %>% mean()
+    mse_test = (lin_test[,"y"] - predict(spline_s, x = lin_test[,"x"])$y)^2 %>% mean()
+    # Return data frame
+    tibble(
+      s = rep(s, 2),
+      mse_type = c("train", "test"),
+      mse_value = c(mse_train, mse_test)
+    )
+  }
+) %>% bind_rows()
+# Find minima
+min_train_lin = lin_df %>% filter(mse_type == "train") %>% filter(mse_value == min(mse_value))
+min_test_lin = lin_df %>% filter(mse_type == "test") %>% filter(mse_value == min(mse_value))
+```
+
+[Навчальна вибірка]{.hi-slate} і сплайни моделей
+
+```{r, plot data for linear flexibility, echo = F}
+ggplot(data = lin_train %>% as.data.frame(), aes(x, y)) +
+stat_function(
+  aes(color = "1", size = "1"), fun = sim_linear, linetype = "longdash"
+) +
+stat_spline(
+  aes(color = "2", size = "2"), spar = min_test$s
+) +
+stat_spline(
+  aes(color = "3", size = "3"), spar = 1.5
+) +
+stat_spline(
+  aes(color = "4", size = "4"), spar = min_train$s
+) +
+geom_point(size = 3.5, shape = 1, color = "grey40") +
+xlab("x") +
+ylab("y") +
+theme_void(base_family = "Fira Sans Book") +
+scale_color_manual(
+  "",
+  values = c("black", magma(3, begin = 0.2, end = 0.9)),
+  labels = c(
+    'Справжня модель',
+    "Сплайн: на основі тесту",
+    'Лінійна підгонка',
+    'Сплайн: на основі навчальної вибірки'
+  )
+) +
+scale_size_manual(
+  "",
+  values = c(0.5, 0.9, 0.9, 1.1),
+  labels = c(
+    'Справжня модель',
+    "Сплайн: на основі тесту",
+    'Лінійна підгонка',
+    'Сплайн: на основі навчальної вибірки'
+  )
+) +
+theme(
+  legend.position = c(0.05, 0.99),
+  legend.justification = c(0,1),
+  axis.title = element_text(size = 20),
+  legend.text = element_text(size = 18)
+)
+```
+
+------------------------------------------------------------------------
+
+```{r, plot linear flexibility, echo = F}
+ggplot(data = lin_df, aes(x = 1.5 - s, y = mse_value, color = mse_type)) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_line(size = 1.2) +
+geom_point(data = bind_rows(min_train_lin, min_test_lin), size = 3.5) +
+xlab("Model flexibility") +
+ylab("MSE") +
+scale_color_viridis_d(
+  "", labels = c("Test MSE", "Train MSE"),
+  option = "magma", begin = 0.2, end = 0.9
+) +
+theme_void(base_family = "Fira Sans Book") +
+theme(
+  legend.position = c(0.9, 0.65),
+  axis.title = element_text(size = 20, vjust = 1),
+  axis.title.y = element_text(angle = 90),
+  legend.text = element_text(size = 18)
+)
+```
+
+------------------------------------------------------------------------
+
+## Рішення? {.smaller}
+
+Зрозуміло, що ми не хочемо перенавчити модель на [навчальній вибірці]{.hi-slate}. <br>Здається, наша [тестова вибірка]{.hi-pink} може допомогти.
+
+[Q]{.qa} Як щодо наступної процедури?
+
+1.  навчіть модель $\hat{\color{#20B2AA}{f}}$ на [навчальній вибірці]{.hi-slate}
+
+2.  використовуйте [тестові дані]{.hi-pink}, щоб "налаштувати" гнучкість моделі
+
+3.  повторюйте кроки 1--2, поки не знайдемо оптимальний рівень гнучкості
+
+. . .
+
+<center>![](img/no.png){width="400"}</center>
+
+Це прямий шлях до **перенавчання моделі**.
+
+------------------------------------------------------------------------
+
+## Variance vs. Bias
+
+Цей компроміс, до якого ми постійно повертаємося, має офіційну назву: <br>**компроміс зміщення-дисперсії**.
+
+. . .
+
+**Variance**: $\hat{\color{#20B2AA}{f}}$ змінюється в залежності від [навчальних вибірок]{.hi-slate}
+
+-   Якщо нові [навчальні вибірки]{.hi-slate} кардинально змінить $\hat{\color{#20B2AA}{f}}$, тоді у нас буде багато невизначеності щодо $\color{#20B2AA}{f}$ (і , загалом, $\hat{\color{#20B2AA}{f}} \not\approx \color{#20B2AA}{f}$).
+
+-   Більш гнучкі моделі зазвичай додають дисперсії до $\color{#20B2AA}{f}$.
+
+. . .
+
+**Bias**: Помилка, яка виникає через неточне оцінювання $\color{#20B2AA}{f}$.
+
+-   Більш гнучкі моделі краще пристосовані для опису складних зв'язків $\left( \color{#20B2AA}{f} \right)$, зменшуючи зміщення. (Реальне життя рідко буває лінійним.)
+
+-   Простіші (менш гнучкі) моделі зазвичай збільшують зміщення.
+
+------------------------------------------------------------------------
+
+## Variance vs. Bias
+
+Очікуване значення [test MSE]{.hi-pink} можна записати $$
+\begin{align}
+  \mathop{E}\left[ \left(\color{#FFA500}{\mathbf{y}}_0 - \hat{\color{#20B2AA}{f}}\!(\color{#6A5ACD}{\mathbf{X}}_0) \right)^2 \right] =
+  \underbrace{\mathop{\text{Var}} \left( \hat{\color{#20B2AA}{f}}\!(\color{#6A5ACD}{\mathbf{X}}_0) \right)}_{(1)} +
+  \underbrace{\left[ \text{Bias}\left( \hat{\color{#20B2AA}{f}}\!(\color{#6A5ACD}{\mathbf{X}}_0) \right) \right]^2}_{(2)} +
+  \underbrace{\mathop{\text{Var}} \left( \varepsilon \right)}_{(3)}
+\end{align}
+$$
+
+. . .
+
+[Q]{.qa}[1]{.sub} Що говорить нам ця формула? <br>[Q]{.qa}[2]{.sub} Як гнучкість моделі враховується у цій формулі? <br>[Q]{.qa}[3]{.sub} Що ця формула говорить про мінімізацію [test MSE]{.hi-pink}?
+
+. . .
+
+[A]{.qa}[2]{.sub} Загалом, гнучкість моделі збільшується (1) і зменшується (2).
+
+. . .
+
+<br>[A]{.qa}[3]{.sub} Рівень зміни дисперсії та зміщення призведе до оптимальної гнучкості. <br> Ми часто бачимо U-подібні криві [test MSE]{.hi-pink}.
+
+------------------------------------------------------------------------
+
+*U-подібний test MSE* по відношенню до гнучкість моделі
+
+```{r, plot flexibility again, echo = F, fig.height = 6}
+ggplot(data = flex_df, aes(x = 1.5 - s, y = mse_value, color = mse_type)) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_line(size = 1.2) +
+geom_point(data = bind_rows(min_train, min_test), size = 3.5) +
+xlab("Model flexibility") +
+ylab("MSE") +
+scale_color_viridis_d(
+  "", labels = c("Test MSE", "Train MSE"),
+  option = "magma", begin = 0.2, end = 0.9
+) +
+theme_void(base_family = "Fira Sans Book") +
+theme(
+  legend.position = c(0.9, 0.65),
+  axis.title = element_text(size = 20, vjust = 1),
+  axis.title.y = element_text(angle = 90),
+  legend.text = element_text(size = 18)
+)
+```
+
+------------------------------------------------------------------------
+
+## Variance vs. Bias
+
+Компроміс зміщення та дисперсії є ключем до розуміння багатьох концепцій машинного навчання.
+
+-   Функції втрати та ефективність моделі
+
+-   Перенавчання та гнучкість моделі
+
+-   Навчання та тестування (і перехресна перевірка)
+
+------------------------------------------------------------------------
+
+[Поки що ми зосереджувалися на проблемах регресії; як щодо класифікації?]{.absolute top="300"}
+
+------------------------------------------------------------------------
+
+## Проблеми класифікації
+
+З категоріальними змінними MSE не працює, *наприклад*,
+
+<center>$\color{#FFA500}{\mathbf{y}} - \hat{\color{#FFA500}{\mathbf{y}}} =$ [(Chihuahua)]{.orange} - [(Blueberry muffin)]{.orange} $=$ не математика.</center>
+
+Очевидно, що нам потрібен інший спосіб визначення ефективності моделі.
+
+------------------------------------------------------------------------
+
+## Проблеми класифікації
+
+Найпоширеніший підхід - це...
+
+[Training error rate]{.hi-slate} Частка прогнозів навчання, які ми робимо неправильно. $$
+\begin{align}
+   \dfrac{1}{n} \sum_{i=1}^{n} \mathbb{I}\!\left( \color{#FFA500}{y}_i \neq \hat{\color{#FFA500} {y}}_i \right)
+\end{align}
+$$ де $\mathbb{I}\!\left( \color{#FFA500}{y}_i \neq \hat{\color{#FFA500}{y}}_i \right)$ є індикаторною функцією, яка дорівнює 1, коли наш прогноз помилковий.
+
+. . .
+
+[Test error rate]{.hi-pink} Частка прогнозів тесту, які ми помиляємося.
+
+<center>Середній $\mathbb{I}\!\left( \color{#FFA500}{y}_0 \neq \hat{\color{#FFA500}{y}}_0 \right)$ у нашому [тесті]{.hi-pink}</center>
+
+------------------------------------------------------------------------
+
+```{r, pic chihuahua, echo = F}
+include_graphics("img/chihuahua-muffin.jpg")
+```
+
+# Наївний Баєсовий класифікатор
+
+## НБК
+
+**НБК** як класифікатор, який класифікує спостереження його найбільш ймовірним групам, враховуючи значення його предикторів, *тобто*,
+
+<center>Призначити спостереж. $i$ до класу $j$, для якого $\mathop{\text{Pr}}\left(\color{#FFA500}{\mathbf{y}} = j | \color{#6A5ACD}{\mathbf{ X}} = \mathbf{x}_0\right)$ є найбільшою</center>
+
+**Класифікатор Байєса** мінімізує [test error rate]{.hi-pink}.
+
+. . .
+
+$\mathop{\text{Pr}}\left(\mathbf{y}=j|\mathbf{X}=x_0\right)$ --- це ймовірність того, що випадкова величина $\mathbf{y}$ дорівнює $j$, при змінній $\mathbf{X} = x_0$.
+
+------------------------------------------------------------------------
+
+## НБК
+
+*Приклад*
+
+-   Pr([y]{.orange} = "chihuahua" \| [X]{.purple} = "orange and purple") = 0,3
+-   Pr([y]{.orange} = "blueberry muffin" \| [X]{.purple} = "orange and purple") = 0,4
+-   Pr([y]{.orange} = "squirrel" \| [X]{.purple} = "orange and purple") = 0,2
+-   Pr([y]{.orange} = "other" \| [X]{.purple} = "orange and purple") = 0,1
+
+Тоді класифікатор Байєса каже, що ми повинні передбачити «чорничний кекс».
+
+------------------------------------------------------------------------
+
+[Межа прийняття рішення Байєса]{.hi-pink} між класами [A]{.orange} і [B]{.navy}
+
+```{r, gen bayes data, echo = F, cache = T, include=FALSE}
+# Generate data
+set.seed(1234)
+n_b = 70
+bayes_gen = tibble(
+  x1 = runif(n_b, 10, 90),
+  x2 = x1 + rnorm(n_b, sd = 30),
+  y = (x1 - 0.9 * x2 + rnorm(10) > 0) %>% as.numeric()
+)
+bayes_truth = expand.grid(x1 = 1:100, x2 = 1:100) %>% as_tibble()
+est_knn = knn.reg(
+  train = bayes_gen[,c("x1", "x2")],
+  test = bayes_truth,
+  y = bayes_gen$y,
+  k = 5
+)
+bayes_truth$p = est_knn$pred
+bayes_truth$y = as.numeric(est_knn$pred > 0.5)
+# Sample data points
+bayes_sample = sample_n(bayes_truth, size = 100)
+bayes_sample %<>% mutate(y = rbernoulli(n = 100, p = p) * 1)
+bayes_sample2 = sample_n(bayes_truth, size = 100)
+bayes_sample2 %<>% mutate(y = rbernoulli(n = 100, p = p) * 1)
+# Train kNN
+est_boundary = knn.reg(
+  train = bayes_sample[,c("x1", "x2")],
+  test = bayes_truth[,c("x1", "x2")],
+  y = bayes_sample$y,
+  k = 5
+)
+est_boundary2 = knn.reg(
+  train = bayes_sample2[,c("x1", "x2")],
+  test = bayes_truth[,c("x1", "x2")],
+  y = bayes_sample2$y,
+  k = 5
+)
+est_boundary_k1 = knn.reg(
+  train = bayes_sample[,c("x1", "x2")],
+  test = bayes_truth[,c("x1", "x2")],
+  y = bayes_sample$y,
+  k = 1
+)
+est_boundary_k60 = knn.reg(
+  train = bayes_sample[,c("x1", "x2")],
+  test = bayes_truth[,c("x1", "x2")],
+  y = bayes_sample$y,
+  k = 60
+)
+# Now add estimates to full dataset
+bayes_truth$y_hat = as.numeric(est_boundary$pred > 0.5)
+bayes_truth$y_hat2 = as.numeric(est_boundary2$pred > 0.5)
+bayes_truth$y_hat_k1 = as.numeric(est_boundary_k1$pred > 0.5)
+bayes_truth$y_hat_k60 = as.numeric(est_boundary_k60$pred > 0.5)
+```
+
+```{r, plot bayes boundary, echo = F, cache = T, dependson = "gen bayes data"}
+ggplot(data = bayes_truth, aes(x1, x2, color = y)) +
+geom_point(shape = 20, size = 0.7) +
+geom_contour(
+  aes(x = x1, y = x2, z = y),
+  bins = 1, color = red_pink, size = 1.3
+) +
+scale_color_viridis_c(option = "magma", begin = 0.1, end = 0.85) +
+theme_void() +
+theme(legend.position = "none")
+```
+
+------------------------------------------------------------------------
+
+Тепер вибірка...
+
+```{r, plot bayes sample, echo = F, cache = T, dependson = "gen bayes data"}
+ggplot(data = bayes_truth, aes(x1, x2, color = y)) +
+geom_point(shape = 20, size = 0.5) +
+geom_contour(
+  aes(x = x1, y = x2, z = y),
+  bins = 1, color = red_pink, size = 1.3
+) +
+geom_point(
+  data = bayes_sample,
+  aes(x1, x2, color = y),
+  size = 2
+) +
+scale_color_viridis_c(option = "magma", begin = 0.1, end = 0.85) +
+theme_void() +
+theme(legend.position = "none")
+```
+
+------------------------------------------------------------------------
+
+... і наша вибірка дає нам [оцінку межі прийняття рішення]{.hi-purple}.
+
+```{r, plot bayes est boundary, echo = F, cache = T, dependson = "gen bayes data"}
+ggplot(data = bayes_truth, aes(x1, x2, color = y)) +
+geom_point(shape = 20, size = 0.5) +
+geom_contour(
+  aes(x = x1, y = x2, z = y),
+  bins = 1, color = red_pink, size = 1.3
+) +
+geom_point(
+  data = bayes_sample,
+  aes(x1, x2, color = y),
+  size = 2
+) +
+geom_contour(
+  aes(x = x1, y = x2, z = y_hat),
+  bins = 1, color = purple, size = 1.3
+) +
+scale_color_viridis_c(option = "magma", begin = 0.1, end = 0.85) +
+theme_void() +
+theme(legend.position = "none")
+```
+
+------------------------------------------------------------------------
+
+А новий зразок дає нам ще одину [оцінку межі прийняття рішення]{.hi-turquoise}.
+
+```{r, plot bayes est boundary 2, echo = F, cache = T, dependson = "gen bayes data"}
+ggplot(data = bayes_truth, aes(x1, x2, color = y)) +
+geom_point(shape = 20, size = 0.5) +
+geom_contour(
+  aes(x = x1, y = x2, z = y),
+  bins = 1, color = red_pink, size = 1.3
+) +
+geom_point(
+  data = bayes_sample2,
+  aes(x1, x2, color = y),
+  size = 2
+) +
+geom_contour(
+  aes(x = x1, y = x2, z = y_hat),
+  bins = 1, color = purple, size = 1.3
+) +
+geom_contour(
+  aes(x = x1, y = x2, z = y_hat2),
+  bins = 1, color = turquoise , size = 1.3
+) +
+scale_color_viridis_c(option = "magma", begin = 0.1, end = 0.85) +
+theme_void() +
+theme(legend.position = "none")
+```
+
+------------------------------------------------------------------------
+
+[Один непараметричний спосіб оцінити ці невідомі умовні ймовірності: K-найближчих сусідів (KNN).]{.absolute top="300"}
+
+# K-nearest neighbors
+
+## Setup
+
+K-найближчі сусіди (KNN) просто призначає категорію на основі K найближчих сусідів (їх значення).
+
+. . .
+
+Використовуючи KNN для перевірки спостереження $\color{#6A5ACD}{\mathbf{x_0}}$, ми обчислюємо частку спостережень, клас яких дорівнює $j$,
+
+$$
+\begin{align}
+  \hat{\mathop{\text{Pr}}}\left(\mathbf{y} = j | \mathbf{X} = \color{#6A5ACD}{\mathbf{x_0}}\right) = \dfrac{1}{K} \sum_{i \in \mathcal{N}_0} \mathop{\mathbb{I}}\left( \color{#FFA500}{\mathbf{y}}_i = j \right)
+\end{align}
+$$
+
+Ці частки є нашими оцінками для невідомих умовних ймовірностей.
+
+Потім ми призначаємо спостереження $\color{#6A5ACD}{\mathbf{x_0}}$ класу з найвищою ймовірністю.
+
+------------------------------------------------------------------------
+
+## KNN
+
+**KNN** у дії <br>Ліворуч: K=3 оцінка для "x".        Праворуч: Межі рішень KNN.
+
+```{r, fig knn, echo = F}
+include_graphics("img/isl-knn.png")
+```
+
+------------------------------------------------------------------------
+
+[Вибір K дуже важливий]{.absolute top="300"}
+
+------------------------------------------------------------------------
+
+Межі прийняття рішень: [Bayes]{.hi-pink}, [K=1]{.hi-purple} і [K=60]{.hi-turquoise}
+
+```{r, plot knn k, echo = F, cache = T, dependson = "gen bayes data"}
+ggplot(data = bayes_truth, aes(x1, x2, color = y)) +
+geom_point(shape = 20, size = 0.5) +
+geom_contour(
+  aes(x = x1, y = x2, z = y),
+  bins = 1, color = red_pink, size = 1.3
+) +
+geom_point(
+  data = bayes_sample,
+  aes(x1, x2, color = y),
+  size = 2
+) +
+geom_contour(
+  aes(x = x1, y = x2, z = y_hat_k1),
+  bins = 1, color = purple, size = 1.3
+) +
+geom_contour(
+  aes(x = x1, y = x2, z = y_hat_k60),
+  bins = 1, color = turquoise, size = 1.3
+) +
+scale_color_viridis_c(option = "magma", begin = 0.1, end = 0.85) +
+theme_void() +
+theme(legend.position = "none")
+```
+
+------------------------------------------------------------------------
+
+.b\[KNN error rates\], при збільшенні K
+
+```{r, fig knn error, echo = F, out.width = '85%'}
+include_graphics("img/isl-knn-error.png")
+```
+
+# Tidymodels
+
+## Швидкий старт
+
+### Дані
+
+```{r}
+library(palmerpenguins)
+
+penguins <- penguins %>% 
+  drop_na()
+
+penguins
+```
+
+------------------------------------------------------------------------
+
+## Швидкий старт
+
+### Дані
+
+```{r}
+#| echo: false
+ggplot(data = penguins,
+                         aes(x = bill_length_mm,
+                             y = bill_depth_mm,
+                             group = species)) +
+  geom_point(aes(color = species, 
+                 shape = species),
+             size = 3,
+             alpha = 0.8) +
+  geom_smooth(method = "lm", se = FALSE, aes(color = species)) +
+  scale_color_manual(values = c("darkorange","purple","cyan4")) +
+  labs(title = "Penguin bill dimensions",
+       subtitle = "Bill length and depth for Adelie, Chinstrap and Gentoo Penguins at Palmer Station LTER",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       color = "Penguin species",
+       shape = "Penguin species") +
+  theme(legend.position = c(0.85, 0.15),
+        plot.title.position = "plot",
+        plot.caption = element_text(hjust = 0, face= "italic"),
+        plot.caption.position = "plot")
+```
+
+------------------------------------------------------------------------
+
+## Train/Test
+
+```{r}
+library(tidymodels)
+set.seed(2023)
+Auto_split <- initial_split(penguins, prop = 0.8)
+Auto_split
+```
+
+```{r}
+train <- training(Auto_split)
+test <- testing(Auto_split)
+```
+
+------------------------------------------------------------------------
+
+## Лінійна регресія
+
+```{r}
+lm_spec <- linear_reg() %>%
+  set_mode('regression') %>%
+  set_engine('lm')
+
+lm_spec
+
+lm_fit <- lm_spec %>% 
+  fit(body_mass_g ~ flipper_length_mm, data = train)
+
+lm_fit
+```
+
+------------------------------------------------------------------------
+
+## Лінійна регресія
+```{r}
+lm_fit %>% 
+  pluck("fit")
+```
+
+```{r}
+lm_fit %>% 
+  pluck("fit") %>%
+  summary()
+```
+
+------------------------------------------------------------------------
+
+## Лінійна регресія
+
+```{r}
+tidy(lm_fit)
+```
+
+```{r}
+glance(lm_fit)
+```
+
+
+------------------------------------------------------------------------
+
+## Лінійна регресія
+
+```{r}
+augment(lm_fit, new_data = test) %>%
+  rmse(truth = body_mass_g, estimate = .pred)
+```
+
+```{r}
+augment(lm_fit, new_data = train) %>%
+  rmse(truth = body_mass_g, estimate = .pred)
+```
+
+------------------------------------------------------------------------
+
+## Лінійна регресія
+
+```{r}
+predict(lm_fit, new_data = test) %>% head()
+```
+
+```{r}
+predict(lm_fit, new_data = test, type = "conf_int") %>% head()
+```
+
+------------------------------------------------------------------------
+
+## Лінійна регресія
+
+```{r}
+bind_cols(
+  predict(lm_fit, new_data = train),
+  train
+) %>%  dplyr::select(body_mass_g, .pred)
+```
+
+------------------------------------------------------------------------
+
+## Naive Bayes
+
+```{r}
+library(discrim)
+
+nb_spec <- naive_Bayes() %>% 
+  set_mode("classification") %>% 
+  set_engine("klaR") %>% 
+  set_args(usekernel = FALSE)
+
+nb_spec
+
+nb_fit <- nb_spec %>% 
+  fit(species ~ ., data = train)
+nb_fit
+```
+
+------------------------------------------------------------------------
+
+## Naive Bayes
+
+```{r}
+augment(nb_fit, new_data = test) %>% 
+  conf_mat(truth = species, estimate = .pred_class)
+```
+
+```{r}
+augment(nb_fit, new_data = test) %>% 
+  accuracy(truth = species, estimate = .pred_class)
+```
+
+------------------------------------------------------------------------
+
+## K-Nearest Neighbors
+
+```{r}
+knn_spec <- nearest_neighbor(neighbors = 3) %>%
+  set_mode("classification") %>%
+  set_engine("kknn")
+
+knn_fit <- knn_spec %>%
+  fit(species ~ ., data = train)
+
+knn_fit
+```
+
+------------------------------------------------------------------------
+
+## K-Nearest Neighbors
+
+```{r}
+augment(knn_fit, new_data = test) %>%
+  conf_mat(truth = species, estimate = .pred_class)
+```
+
+```{r}
+augment(knn_fit, new_data = test) %>%
+  accuracy(truth = species, estimate = .pred_class) 
+```
+
+# Дякую за увагу! {.unnumbered .unlisted}
