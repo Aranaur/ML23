@@ -130,29 +130,6 @@ $presentation-font-size-root: 30px;
   color: #ffffff;
 }
 
-/* Mono-spaced font */
-.mono {
-  font-family: monospace;
-}
-/* Underline */
-.ul {
-  text-decoration: underline;
-}
-/* Overline */
-.ol {
-  text-decoration: overline;
-}
-.st {
-  text-decoration: line-through;
-}
-/* Bold */
-.b {
-  font-weight: bold;
-}
-/* Italic */
-.it {
-  font-style: italic;
-}
 /* Fraction */
 .top{
   display:inline-block;
@@ -392,7 +369,6 @@ table th {
   font-weight: 400;
 }
 
-
 /* Extra left padding */
 .pad-left {
   margin-left: 5%;
@@ -460,10 +436,3 @@ hr, .title-slide h2::after, .mline h1::after {
   color: #e5e5e5;
   height: 1px;
 }
-
-/* @media print {
-  .has-continuation {
-    display: block !important;
-  }
-}
- */

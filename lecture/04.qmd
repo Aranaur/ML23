@@ -1,0 +1,1661 @@
+---
+title: "04 - Відбір та регуляризація лінійних моделей"
+subtitle: "Machine Learning"
+author: "Ігор Мірошниченко"
+date: today
+date-format: iso
+institute: КНЕУ::ІІТЕ
+crossref:
+  fig-title: Рис.     # (default is "Figure")
+  tbl-title: Таб.     # (default is "Table")
+format:
+  revealjs: 
+    theme: [simple, custom.scss]
+    # footer: <https://t.me/araprof>
+    logo: img/logo.png
+    chalkboard: true
+    slide-number: true
+    toc: true
+    toc-title: ЗМІСТ
+    transition: fade
+    mouse-wheel: true
+    highlight-style: github
+    mainfont: metropolis
+    toc-depth: 1
+    fig-width: 9
+    fig-height: 5
+knitr: 
+  opts_chunk: 
+    echo: true
+    warnings: false
+    message: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(pacman)
+p_load(
+  broom, tidyverse,
+  ggplot2, ggthemes, ggforce, ggridges, cowplot, scales,
+  latex2exp, viridis, extrafont, gridExtra, plotly, ggformula,
+  kableExtra, DT,
+  data.table, dplyr, snakecase, janitor,
+  lubridate, knitr, future, furrr,
+  MASS, estimatr, FNN, caret, parsnip,
+  huxtable, here, magrittr, parallel, tidymodels, glmnet, fontawesome
+)
+
+
+# Define colors
+red_pink   = "#e64173"
+turquoise  = "#20B2AA"
+orange     = "#FFA500"
+red        = "#fb6107"
+blue       = "#3b3b9a"
+green      = "#8bb174"
+grey_light = "grey70"
+grey_mid   = "grey50"
+grey_dark  = "grey20"
+purple     = "#6A5ACD"
+slate      = "#314f4f"
+```
+
+# Лінійна регресія
+
+## Лінійна регресія
+
+Лінійна регресія «підбирає» коефіцієнти $\color{#e64173}{\beta}_0,\, \ldots,\, \color{#e64173}{\beta}_p$ для моделі
+
+$$
+\begin{align}
+  \color{#FFA500}{y}_i = \color{#e64173}{\beta}_0 + \color{#e64173}{\beta}_1 x_{1,i} + \color{#e64173}{\beta}_2 x_{2,i} + \cdots + \color{#e64173}{\beta}_p x_{p,i} + \varepsilon_i
+\end{align}
+$$
+
+і часто застосовується в двох різних ситуаціях із досить різними цілями:
+
+1. Причинний висновок оцінює та інтерпретує коефіцієнти.
+
+2. Прогнозування фокусується на точному оцінюванні результатів.
+
+Незалежно від мети, спосіб «підгонки» (оцінки) моделі однаковий.
+
+---
+
+## Підгонка лінії регресії
+
+Як і у випадку з багатьма методами навчання, регресія зосереджена на мінімізації певної міри втрати/помилки.
+
+$$
+\begin{align}
+  e_i = \color{#FFA500}{y_i} - \color{#6A5ACD}{\hat{y}_i}
+\end{align}
+$$
+
+. . .
+
+У лінійній регресії використовується функція втрат L[2]{.sub}, яка також називається сума квадратів помилок (SSE) або залишкова сума квадратів (RSS)
+
+$$
+\begin{align}
+  \text{RSS} = e_1^2 + e_2^2 + \cdots + e_n^2 = \sum_{i=1}^n e_i^2
+\end{align}
+$$
+
+Зокрема: OLS вибирає $\color{#e64173}{\hat{\beta}_j}$, який мінімізує RSS.
+
+---
+
+## Ефективність
+
+Існує велика різноманітність способів оцінки моделей лінійної регресії.
+
+**Residual standard error (RSE)**
+$$
+\begin{align}
+  \text{RSE}=\sqrt{\dfrac{1}{n-p-1}\text{RSS}}=\sqrt{\dfrac{1}{n-p-1}\sum_{i=1}^{n} \left( y_i - \hat{y}_i \right)^2}
+\end{align}
+$$
+
+R-квадрат
+$$
+\begin{align}
+  R^2 = \dfrac{\text{TSS} - \text{RSS}}{\text{TSS}} = 1 - \dfrac{\text{RSS}}{\text{TSS}} \quad \text{де} \quad \text{TSS} = \sum_{i=1}^{n} \left( y_i - \overline{y} \right)^2
+\end{align}
+$$
+---
+
+## Ефективність і перенавчання
+
+R[2]{.super} не забезпечує захисту від перенавчання, а насправді тільки сприяє йому.
+$$
+\begin{align}
+  R^2 = 1 - \dfrac{\text{RSS}}{\text{TSS}}
+\end{align}
+$$
+**Додавання нових змінних:** RSS $\downarrow$ і TSS не змінено. Таким чином, R[2]{.super} збільшується.
+
+. . .
+
+**RSE** *трохи* штрафує додаткові змінні:
+$$
+\begin{align}
+  \text{RSE}=\sqrt{\dfrac{1}{n-p-1}\text{RSS}}
+\end{align}
+$$
+**Додавання нових змінних:** RSS $\downarrow$, але $p$ збільшується.
+
+---
+
+```{r, overfit-data-gen, eval = F, include=FALSE}
+library(pacman)
+p_load(parallel, stringr, data.table, magrittr, here)
+# Set parameters
+set.seed(123)
+N = 2e3
+n = 500
+p = n - 1
+# Generate data
+X = matrix(data = rnorm(n = N*p), ncol = p)
+β = matrix(data = rnorm(p, sd = 0.005), ncol = 1)
+y = X %*% β + matrix(rnorm(N, sd = 0.01), ncol = 1)
+# Create a data table
+pop_dt = X %>% data.matrix() %>% as.data.table()
+setnames(pop_dt, paste0("x", str_pad(1:p, 4, "left", 0)))
+pop_dt[, y := y %>% unlist()]
+# Subset
+sub_dt = pop_dt[1:n,]
+out_dt = pop_dt[(n+1):N,]
+Nn = N - n
+# For j in 1 to p: fit a model, record R2 and RSE
+fit_dt = mclapply(X = seq(1, p, by = 5), mc.cores = 12, FUN = function(j) {
+  # Fit a model with the the first j variables
+  lm_j = lm(y ~ ., data = sub_dt[, c(1:j,p+1), with = F])
+  # Unseen data performance
+  y_hat = predict(lm_j, newdata = out_dt[, c(1:j,p+1), with = F])
+  out_rss = sum((out_dt[,y] - y_hat)^2)
+  out_tss = sum((out_dt[,y] - mean(out_dt[,y]))^2)
+  # Return data table
+  data.table(
+    p = j,
+    in_rse = summary(lm_j)$sigma,
+    in_r2 = summary(lm_j)$r.squared,
+    in_r2_adj = summary(lm_j)$adj.r.squared,
+    in_aic = AIC(lm_j),
+    in_bic = BIC(lm_j),
+    out_rse = sqrt(1 / (Nn - j - 1) * out_rss),
+    out_r2 = 1 - out_rss/out_tss,
+    out_r2_adj = 1 - ((out_rss) / (Nn - j - 1)) / ((out_tss) / (Nn-1))
+  )
+}) %>% rbindlist()
+# Save results
+saveRDS(
+  object = fit_dt,
+  file = here("other-files", "overfit-data.rds")
+)
+```
+
+```{r, overfit-data-load, include=FALSE}
+# Load the data
+fit_dt = here("lecture", "other-files", "overfit-data.rds") %>% read_rds()
+```
+
+
+[**Приклад**<br>Давайте подивимося, як працюють **R[2]{.super}** і **RSE** з 500 дуже слабкими предикторами.]{.absolute top="300"}
+
+---
+
+**R[2]{.super}** на навчальній вибірці постійно збільшується, коли ми додаємо предиктори.
+<br>
+[**R[2]{.super}** на тестовій вибірці - ні.]{.white}
+
+```{r, overfit-plot-r2, echo = F, fig.height = 6}
+ggplot(data = fit_dt, aes(x = p, y = in_r2)) +
+geom_hline(yintercept = 0) +
+geom_line() +
+geom_point() +
+geom_line(aes(y = out_r2), color = NA) +
+geom_point(aes(y = out_r2), color = NA) +
+scale_y_continuous(expression(R^2)) +
+scale_x_continuous("Number of predictors", labels = comma) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+**R[2]{.super}** на навчальній вибірці постійно збільшується, коли ми додаємо предиктори.
+<br>
+[**R[2]{.super}** на тестовій вибірці - ні.]{.hi}
+
+```{r, overfit-plot-r2-both, echo = F, fig.height = 6}
+ggplot(data = fit_dt, aes(x = p, y = in_r2)) +
+geom_hline(yintercept = 0) +
+geom_line() +
+geom_point() +
+geom_line(aes(y = out_r2), color = red_pink) +
+geom_point(aes(y = out_r2), color = red_pink) +
+scale_y_continuous(expression(R^2)) +
+scale_x_continuous("Number of predictors", labels = comma) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+[А як щодо RSE? Чи *допомагає* його штраф?]{.absolute top="300"}
+
+---
+
+Незважаючи на штраф за додавання змінних, **RSE** на навчальній вибірці все ще може бути надмірним,
+<br>
+[про що свідчить **RSE** на тестовій вибірці]{.white}
+
+```{r, plot-overfit-rse, echo = F, fig.height = 6}
+ggplot(data = fit_dt, aes(x = p, y = in_rse)) +
+geom_hline(yintercept = 0) +
+geom_line() +
+geom_point() +
+geom_line(aes(y = out_rse), color = NA) +
+geom_point(aes(y = out_rse), color = NA) +
+scale_y_continuous("RSE") +
+scale_x_continuous("Number of predictors", labels = comma) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+Незважаючи на штраф за додавання змінних, **RSE** на навчальній вибірці все ще може бути надмірним,
+<br>
+[про що свідчить **RSE** на тестовій вибірці]{.hi}
+
+```{r, plot-overfit-rse-both, echo = F, fig.height = 6}
+ggplot(data = fit_dt, aes(x = p, y = in_rse)) +
+geom_hline(yintercept = 0) +
+geom_line() +
+geom_point() +
+geom_line(aes(y = out_rse), color = red_pink) +
+geom_point(aes(y = out_rse), color = red_pink) +
+scale_y_continuous("RSE") +
+scale_x_continuous("Number of predictors", labels = comma) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+## Пенальті
+
+RSE — не єдиний спосіб штрафувати за додавання змінних.
+
+**Adjusted R[2]{.super}** — ще одне класичне рішення.
+
+$$
+\begin{align}
+  \text{Adjusted }R^2 = 1 - \dfrac{\text{RSS}\color{#6A5ACD}{/(n - p - 1)}}{\text{TSS}\color{#6A5ACD}{/(n-1)}}
+\end{align}
+$$
+
+Adj. R[2]{.super} намагається "виправити" R[2]{.super} за допомогою [додавання штрафу за кількість змінних]{.hi-purple}.
+
+. . .
+
+- $\text{RSS}$ завжди зменшується, коли додається нова змінна.
+
+. . .
+
+- $\color{#6A5ACD}{\text{RSS}/(n-p-1)}$ може збільшуватися або зменшуватися з новою змінною.
+
+---
+
+Однак **in-sample adjusted R[2]{.super}** все ще може бути перенавчаним.
+<br>
+[Ілюстровано out-of-sample R[2]{.super}]{.white}
+```{r, plot-overfit-adjr2, echo = F, fig.height = 6}
+ggplot(data = fit_dt, aes(x = p, y = in_r2_adj)) +
+geom_hline(yintercept = 0) +
+geom_line() +
+geom_point() +
+geom_line(aes(y = out_r2_adj), color = NA) +
+geom_point(aes(y = out_r2_adj), color = NA) +
+scale_y_continuous(Adjusted~R^2) +
+scale_x_continuous("Number of predictors", labels = comma) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+Однак **in-sample adjusted R[2]{.super}** все ще може бути перенавчаним.
+<br>
+[Ілюстровано out-of-sample R[2]{.super}]{.hi}
+```{r, plot-overfit-adjr2-both, echo = F, fig.height = 6}
+ggplot(data = fit_dt, aes(x = p, y = in_r2_adj)) +
+geom_hline(yintercept = 0) +
+geom_line() +
+geom_point() +
+geom_line(aes(y = out_r2_adj), color = red_pink) +
+geom_point(aes(y = out_r2_adj), color = red_pink) +
+scale_y_continuous(Adjusted~R^2) +
+scale_x_continuous("Number of predictors", labels = comma) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+Ось **in-sample [AIC]{.orange}** і **[BIC]{.purple}**.
+<br>
+Здається, жодна метрика у вибірці не захищає повністю від перенавчання.
+
+```{r, test, echo = F, fig.height = 6}
+ggplot(data = fit_dt, aes(x = p, y = in_aic)) +
+geom_hline(yintercept = 0) +
+geom_line() +
+geom_point() +
+geom_line(aes(y = in_aic), color = orange) +
+geom_point(aes(y = in_aic), color = orange) +
+geom_line(aes(y = in_bic), color = purple) +
+geom_point(aes(y = in_bic), color = purple) +
+scale_y_continuous('AIC and BIC') +
+scale_x_continuous('Number of predictors', labels = comma) +
+theme_minimal(base_size = 20, base_family = 'Fira Sans Book')
+```
+
+---
+
+## Кращий спосіб?
+
+R^2^, скоригований R^2^ і RSE кожен пропонує певний відтінок підгонки моделі, але вони здаються **обмеженими у своїх можливостях запобігати перенавчанню**.
+
+. . .
+
+Ми хочемо, щоб був метод оптимального вибору (лінійної) моделі — збалансування дисперсії та зміщення та уникнення перенавчання
+
+Сьогодні ми обговоримо два (пов’язані) методи:
+
+1. **Вибір підмножини** вибирає (під)множину наших $p$ предикторів
+
+2. **Використання всіх** $p$ предикторів для оцінки моделі.
+
+# Вибір підмножини
+
+## Вибір підмножини
+
+При виборі підмножини ми:
+
+1. Скоротити потенційні предиктори $p$ (за допомогою магії/алгоритму)
+2. Оцінити обрану лінійну модель за допомогою МНК
+
+. . .
+
+Як ми можемо *скоротити* кількість предикторів?
+
+. . .
+
+- **Вибір найкращої підмножини**: оцінити моделі для кожної можливої підмножини.
+- **Forward stepwise selection** починається лише з intercept та намагається створити найкращу модель (використовуючи певний критерій відповідності).
+- **Backward stepwise selection** починається з усіх змінних $p$ і намагається відкинути змінні, поки не досягне найкращої моделі (використовуючи певний критерій відповідності).
+- **Гібридні підходи**
+
+---
+
+## Вибір найкращої підмножини
+
+**Вибір найкращої підмножини** базується на простій ідеї: оцінити модель для кожної можливої підмножини змінних; потім порівняйте їхні результати.
+
+. . .
+
+Але...
+
+«Модель для кожної можливої підмножини» може означати багато $\left( 2^p \right)$ моделей.
+
+. . .
+
+Дуже багато моделей...
+
+- 10 предикторів $\rightarrow$ 1024 моделі для підгонки
+- 25 предикторів $\rightarrow$ >33,5 мільйонів моделей для підгонки
+- 100 предикторів $\rightarrow$ ~1,5 трильйона моделей для підгонки
+
+Навіть маючи велику кількість дешевої обчислювальної потужності, ми можемо зіткнутися з проблемами.
+
+---
+
+## Вибір найкращої підмножини
+
+Алгоритм:
+
+
+1. Визначте $\mathcal{M}_0$ як модель без предикторів.
+
+2. Для $k$ від 1 до $p$:
+
+   - Підбирайте всі можливі моделі за допомогою $k$ предикторів.
+
+   - Визначте $\mathcal{M}_k$ як "найкращу" модель з $k$ предикторами.
+
+3. Виберіть "найкращу" модель із $\mathcal{M}_0,\,\ldots,\,\mathcal{M}_p$.
+
+Як ми бачили, RSS знижується (а R^2^ збільшується) з $p$, тому ми повинні використовувати крос-валідацію.
+
+---
+
+## Притклад dataset: `Credit`
+
+Ми будемо використовувати набір даних `Credit` з пакета R `ISLR`.
+
+. . .
+
+```{r, credit-data, echo = F}
+# Print it
+datatable(
+  ISLR::Credit,
+  height = '40%',
+  rownames = F,
+  options = list(
+    dom = 't',
+    pageLength = '7',
+    headerCallback = DT::JS(
+      "function(thead) {",
+      "  $(thead).css('font-size', '55%');",
+      "}"
+    )
+  )
+) %>% formatStyle(
+  columns = 1:nrow(ISLR::Credit),
+  fontSize = "65%",
+  textAlign = "center",
+  paddingLeft = "0em",
+  paddingBottom = "0.3em",
+  paddingTop = "0.3em"
+) %>%
+formatRound("Income", 1)
+```
+
+Набір даних `Credit` містить `r nrow(ISLR::Credit) %>% comma()` спостережень  щодо `r ncol(ISLR::Credit)` змінних.
+
+---
+
+## Притклад dataset: `Credit`
+
+```{r, credit-data-work, include = F, cache = T}
+# The Credit dataset
+credit_dt = ISLR::Credit %>% clean_names() %T>% setDT()
+# Clean variables
+credit_dt[, `:=`(
+  i_female = 1 * (gender == "Female"),
+  i_student = 1 * (student == "Yes"),
+  i_married = 1 * (married == "Yes"),
+  i_asian = 1 * (ethnicity == "Asian"),
+  i_african_american = 1 * (ethnicity == "African American")
+)]
+# Drop unwanted variables
+credit_dt[, `:=`(id = NULL, gender = NULL, student = NULL, married = NULL, ethnicity = NULL)]
+# Rearrange
+credit_dt = cbind(credit_dt[,-"balance"], credit_dt[,"balance"])
+```
+
+Нам потрібно попередньо обробити набір даних, перш ніж ми зможемо вибрати модель...
+
+```{r, credit-data-cleaned, echo = F}
+# Print it
+datatable(
+  credit_dt,
+  height = '40%',
+  rownames = F,
+  options = list(
+    dom = 't',
+    pageLength = '7',
+    headerCallback = DT::JS(
+      "function(thead) {",
+      "  $(thead).css('font-size', '50%');",
+      "}"
+    )
+  )
+) %>% formatStyle(
+  columns = 1:nrow(credit_dt),
+  fontSize = "65%",
+  textAlign = "center",
+  paddingLeft = "0em",
+  paddingBottom = "0.3em",
+  paddingTop = "0.3em"
+) %>%
+formatRound("income", 1)
+```
+
+Тепер набір даних містить `r credit_dt %>% nrow() %>% comma()` спостереження  щодо `r ncol(credit_dt)` змінних (2048 підмножин).
+
+```{r, bss-data, include = F, cache = T}
+# Find all possible subsets of the variables
+var_dt = expand_grid(
+  income = c(0,1),
+  limit = c(0,1),
+  rating = c(0,1),
+  cards = c(0,1),
+  age = c(0,1),
+  education = c(0,1),
+  i_female = c(0,1),
+  i_student = c(0,1),
+  i_married = c(0,1),
+  i_asian = c(0,1),
+  i_african_american = c(0,1)
+) %T>% setDT()
+# Fit each model
+bss_dt = lapply(X = 2:nrow(var_dt), FUN = function(i) {
+  # Find the variables
+  vars_i = which(var_dt[i,] %>% equals(T))
+  # Estimate the model
+  model_i = lm(
+    balance ~ .,
+    data = credit_dt[, c(vars_i, ncol(credit_dt)), with = F]
+  )
+  # Output summaries
+  data.table(
+    n_variables = length(vars_i),
+    r2 = summary(model_i)$r.squared,
+    rmse = mean(model_i$residuals^2) %>% sqrt()
+  )
+}) %>% rbindlist()
+```
+
+---
+
+```{r, bss-graph-rmse, echo = F}
+ggplot(data = bss_dt, aes(x = n_variables, y = rmse)) +
+geom_point(alpha = 0.5, size = 2.5) +
+geom_line(
+  data = bss_dt[, .(rmse = min(rmse)), by = n_variables],
+  color = red_pink, size = 1, alpha = 0.8
+) +
+scale_y_continuous("RMSE") +
+scale_x_continuous("Number of predictors") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+## Вибір найкращої підмножини
+
+Звідси:
+
+1. Оцініть помилку крос-валідації для кожного $\mathcal{M}_k$.
+
+2. Виберіть $\mathcal{M}_k$, які мінімізують помилку CV.
+
+3. Навчіть обрану модель на повному наборі даних.
+
+---
+
+## Вибір найкращої підмножини
+
+**Попередження**
+
+- Обчислювально інтенсивний
+- Вибрані моделі можуть бути «неправильними»
+- Вам потрібно захиститися від перенавчання під час вибору $\mathcal{M}_k$
+- Також слід хвилюватися про перенавчання, коли $p$ "великий"
+- Залежність від змінних.
+
+**Переваги**
+
+- Комплексний пошук за наданими змінними
+- Результуюча модель — якщо її оцінити за допомогою OLS — має властивості OLS
+- Можна застосовувати до інших (не OLS) оцінювачів
+
+---
+
+## Stepwise selection
+
+[Stepwise selection]{.attn} надає менш обчислювальну альтернативу вибору найкращої підмножини.
+
+**Основна ідея:**
+
+
+1. Почніть з довільної моделі.
+2. Спробуйте знайти «кращу» модель, додаючи/вилучаючи змінні.
+3. Повторіть.
+4. Зупиніться, коли у вас буде найкраща модель. (Або виберіть найкращу модель.)
+
+
+. . .
+
+Два найпоширеніших різновиди ступінчастого відбору:
+- **Forward** починається лише з intercept $\left( \mathcal{M}_0 \right)$ і додає змінні
+- **Backward** починається з усіх змінних $\left( \mathcal{M}_p \right)$ і видаляє змінні
+
+---
+
+## Forward stepwise
+
+1. Почніть з моделі лише з intercept (без предикторів), $\mathcal{M}_0$.
+
+2. Для $k=0,\,\ldots,\,p$:
+
+   - Оцініть модель для кожного з решти предикторів $p-k$, окремо додавши предиктори до моделі $\mathcal{M}_k$.
+
+   - Визначте $\mathcal{M}_{k+1}$ як «найкращу» модель з моделей $p-k$.
+
+3. Виберіть «найкращу» модель із $\mathcal{M}_0,\,\ldots,\, \mathcal{M}_p$.
+
+
+---
+
+Forward stepwise з `caret` в R
+
+```{r, forward-train, echo = T}
+train_forward = train(
+  y = credit_dt[["balance"]],
+  x = credit_dt %>% dplyr::select(-balance),
+  trControl = trainControl(method = "cv", number = 5),
+  method = "leapForward",
+  tuneGrid = expand.grid(nvmax = 1:11)
+)
+```
+
+. . .
+
+:::: {.columns}
+
+::: {.column}
+```{r, forward-train-results, echo = F}
+datatable(
+  train_forward$results[,1:4],
+  height = '50%',
+  width = '100%',
+  rownames = F,
+  options = list(dom = 't'),
+  colnames = c("N vars", "RMSE", "R2", "MAE")
+) %>% formatRound(
+  columns = 2:4, digits = c(2, 3, 1)
+) %>% formatStyle(
+  columns = 1:4,
+  fontSize = "90%",
+  textAlign = "center",
+  paddingBottom = '0.3em',
+  paddingTop = '0.3em'
+)
+```
+:::
+
+::: {.column}
+```{r, forward-train-plot, echo = F, fig.height = 9, out.width = '100%'}
+ggplot(data = train_forward$results, aes(x = nvmax, y = RMSE)) +
+geom_line(color = purple, size = 1) +
+geom_point(color = purple, size = 4.5) +
+scale_y_continuous("RMSE") +
+scale_x_continuous("Number of variables") +
+theme_minimal(base_size = 32, base_family = "Fira Sans Book")
+```
+:::
+
+::::
+
+---
+
+## Backward stepwise
+
+Алгоритм:
+
+
+1. Почніть з моделі, яка включає всі $p$ предиктори: $\mathcal{M}_p$.
+
+2. Для $k=p,\, p-1,\, \ldots,\,1$:
+
+   - Оцінка $k$ моделей, де кожна модель вилучає один із $k$ предикторів з $\mathcal{M}_k$.
+
+   - Визначте $\mathcal{M}_{k-1}$ як "найкращу" з моделей $k$.
+
+3. Виберіть «найкращу» модель із $\mathcal{M}_0,\,\ldots,\, \mathcal{M}_p$.
+
+
+---
+
+## Backward stepwise з `caret` в R
+
+```{r, backward-train, echo = T}
+train_backward = train(
+  y = credit_dt[["balance"]],
+  x = credit_dt %>% dplyr::select(-balance),
+  trControl = trainControl(method = "cv", number = 5),
+  method = "leapBackward",
+  tuneGrid = expand.grid(nvmax = 1:11)
+)
+```
+
+. . .
+
+:::: {.columns}
+
+::: {.column}
+```{r, backward-train-results, echo = F}
+datatable(
+  train_backward$results[,1:4],
+  height = '50%',
+  width = '100%',
+  rownames = F,
+  options = list(dom = 't'),
+  colnames = c("N vars", "RMSE", "R2", "MAE")
+) %>% formatRound(
+  columns = 2:4, digits = c(2, 3, 1)
+) %>% formatStyle(
+  columns = 1:4,
+  fontSize = "90%",
+  textAlign = "center",
+  paddingBottom = '0.3em',
+  paddingTop = '0.3em'
+)
+```
+:::
+
+::: {.column}
+```{r, backward-train-plot, echo = F, fig.height = 9, out.width = '100%'}
+ggplot(data = train_backward$results, aes(x = nvmax, y = RMSE)) +
+geom_line(data = train_forward$results, color = purple, size = 1, alpha = 0.3) +
+geom_point(data = train_forward$results, color = purple, size = 4.5, alpha = 0.3) +
+geom_line(color = red_pink, size = 1) +
+geom_point(color = red_pink, size = 4.5) +
+scale_y_continuous("RMSE") +
+scale_x_continuous("Number of variables") +
+theme_minimal(base_size = 32, base_family = "Fira Sans Book")
+```
+:::
+
+::::
+
+---
+
+[Forward]{.hi-purple} and [Backward]{.hi-pink} step. selection можуть вибрати різні моделі.
+
+```{r, stepwise-plot-zoom, echo = F}
+ggplot(data = train_backward$results, aes(x = nvmax, y = RMSE)) +
+geom_line(data = train_forward$results, color = purple, alpha = 0.3, size = 0.9) +
+geom_point(data = train_forward$results, color = purple, size = 3.5, alpha = 0.3) +
+geom_line(color = red_pink, size = 0.8) +
+geom_point(color = red_pink, size = 4.5, shape = 1) +
+scale_y_continuous("RMSE") +
+scale_x_continuous("Number of variables") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+## Критерії
+
+Яку модель ви виберете, залежить від того, **як ви визначаєте "найкращу модель"**.
+
+. . .
+
+І у нас є багато варіантів...
+
+. . .
+
+Ми бачили RSS, (R)MSE, RSE, R^2^, Adj. R^2^.
+
+. . .
+
+Звичайно, є  так звані інформаційні критерії, які сильніше штрафують модель за $d$ предикторів.
+
+$$
+\begin{align}
+  C_p &= \frac{1}{n} \left( \text{RSS} + \color{#6A5ACD}{2 d \hat{\sigma}^2 }\right)
+  \\[1ex]
+  \text{AIC} &= \frac{1}{n\hat{\sigma}^2} \left( \text{RSS} + \color{#6A5ACD}{2 d \hat{\sigma}^2 }\right)
+  \\[1ex]
+  \text{BIC} &= \frac{1}{n\hat{\sigma}^2} \left( \text{RSS} + \color{#6A5ACD}{\log(n) d \hat{\sigma}^2 }\right)
+\end{align}
+$$
+
+# Регуляризація
+
+## Регуляризація
+Це потужна альтернатива "підвибірки".
+
+- оцінює модель, яка містить всі $\color{#e64173}{p}$ предиктори.
+- одночасно: стискає (штрафує) коефіцієнти до нуля
+
+---
+
+## Регуляризація
+
+- Зменшення наших коефіцієнтів до нуля [зменшує дисперсію моделі]{.hi}
+- [Штрафує]{.hi} нашу модель за [великів коефіцієнти]{.hi} та стискає їх до нуля.
+- [Оптимальний штраф]{.hi} збалансує  дисперсію та зміщення.
+
+. . .
+
+Тепер ви розумієте методи регуляризації:
+
+- Ridge regression
+- Lasso
+- Elasticnet
+
+# Ridge regression
+
+## Ridge regression
+
+Назад до МНК (знову)
+
+Регресія найменших квадратів отримує $\hat{\beta}_j$ шляхом мінімізації RSS, _тобто_,
+$$
+\begin{align}
+  \min_{\hat{\beta}} \text{RSS} = \min_{\hat{\beta}} \sum_{i=1}^{n} e_i^2 = \min_{\hat{\beta}} \sum_{i=1}^{n} \bigg( \color{#FFA500}{y_i} - \color{#6A5ACD}{\underbrace{\left[ \hat{\beta}_0 + \hat{\beta}_1 x_{i,1} + \cdots + \hat{\beta}_p x_{i,p} \right]}_{=\hat{y}_i}} \bigg)^2
+\end{align}
+$$
+
+. . . 
+
+[Ридж регресія]{.attn} вносить невеликі зміни:
+
+- [додає штраф]{.pink} = сума квадратів коефіцієнтів $\left( \color{#e64173}{\lambda\sum_{j}\beta_j^2} \right)$
+- [мінімізує]{.pink } (зважену) суму [RSS і штрафу]{.pink}
+
+. . . 
+
+$$
+\begin{align}
+  \min_{\hat{\beta}^R} \sum_{i=1}^{n} \bigg( \color{#FFA500}{y_i} - \color{#6A5ACD}{\hat{y}_i} \bigg)^2 + \color{#e64173}{\lambda \sum_{j=1}^{p} \beta_j^2}
+\end{align}
+$$
+
+---
+
+## Ridge regression
+
+:::: {.columns}
+
+::: {.column}
+[Ridge regression]{.hi}
+$$
+\begin{align}
+\min_{\hat{\beta}^R} \sum_{i=1}^{n} \bigg( \color{#FFA500}{y_i} - \color{#6A5ACD}{\hat{y}_i} \bigg)^2 + \color{#e64173}{\lambda \sum_{j=1}^{p} \beta_j^2}
+\end{align}
+$$
+:::
+
+::: {.column}
+[Least squares]{.b}
+$$
+\begin{align}
+\min_{\hat{\beta}} \sum_{i=1}^{n} \bigg( \color{#FFA500}{y_i} - \color{#6A5ACD}{\hat{y}_i} \bigg)^2
+\end{align}
+$$
+:::
+
+::::
+
+$\color{#e64173}{\lambda}\enspace (\geq0)$ — це параметр налаштування сили штрафу.
+<br>
+$\color{#e64173}{\lambda} = 0$ не передбачає штрафу: ми повернулися до методу найменших квадратів.
+
+. . .
+
+Кожне значення $\color{#e64173}{\lambda}$ створює новий набір коефіцієнтів.
+
+. . .
+
+Ridge regression до компромісу зміщення та дисперсії: баланс
+
+- зменшення **RSS**, _тобто_, $\sum_i\left( \color{#FFA500}{y_i} - \color{#6A5ACD}{\hat{y}_i} \right)^2$
+- зменшення **коефіцієнтів** [(ігноруємо intecept)]{.grey-light}
+
+---
+
+## Ridge regression
+
+### $\lambda$ і штраф
+
+Ключовим є вибір значення для $\lambda$.
+
+- Якщо $\lambda$ занадто мала, то наша модель повертається до OLS.
+- Якщо $\lambda$ занадто велика, ми скорочуємо всі наші коефіцієнти занадто близько до нуля.
+
+. . .
+
+**Що робити?**
+
+Викорисовувати крос-валідацію.
+
+---
+
+## Штраф
+
+Оскільки ми підсумовуємо квадрат коефіцієнтів, ми штрафуємо більші коефіціенти  набагато більше, ніж збільшення малих коефіцієнтів.
+
+**Приклад** За значення $\beta$ ми платимо штраф у $2 \lambda \beta$ за невелике збільшення.
+
+- При $\beta = 0$ штраф за невелике збільшення становить $0$.
+- При $\beta = 1$ штраф за невелике збільшення становить $2\lambda$.
+- При $\beta = 2$ штраф за невелике збільшення становить $4\lambda$.
+- При $\beta = 3$ штраф за невелике збільшення становить $6\lambda$.
+- При $\beta = 10$ штраф за невелике збільшення становить $20\lambda$.
+
+---
+
+## Штрафи та стандартизація{.smaller}
+
+Значення предикторів можуть мати суттєвий вплив на результат рідж регресії
+
+**Чому?**
+
+. . .
+
+Тому що значення $\mathbf{x}_j$ впливають на $\beta_j$, а ridge дуже чутливий до $\beta_j$.
+
+. . .
+
+**Приклад** Нехай $x_1$ це відстань.
+
+**МНК**
+<br>
+Якщо $x_1$ вимірюється метрами і $\beta_1 = 3$, то коли $x_1$ дорівнює км, $\beta_1 = 3000$.
+<br>
+Шкала/одиниці предикторів не впливають на оцінки методом найменших квадратів.
+
+. . .
+
+[Ridge regression]{.hi} сплачує набагато більший штраф за $\beta_1=3000$, ніж $\beta_1=3$.
+<br>Ви не отримаєте однакові (масштабовані) оцінки, змінюючи одиниці вимірювання.
+
+. . .
+
+**Рішення** Стандартизуйте свої змінні, _тобто_,<br> `x_stnd = (x - середнє (x))/sd(x)`.
+
+---
+
+## Штрафи та стандартизація{.smaller}
+
+Значення предикторів можуть мати суттєвий вплив на результат рідж регресії
+
+**Чому?**
+
+Тому що значення $\mathbf{x}_j$ впливають на $\beta_j$, а ridge дуже чутливий до $\beta_j$.
+
+**Приклад** Нехай $x_1$ це відстань.
+
+**МНК**
+<br>
+Якщо $x_1$ вимірюється метрами і $\beta_1 = 3$, то коли $x_1$ дорівнює км, $\beta_1 = 3000$.
+<br>
+Шкала/одиниці предикторів не впливають на оцінки методом найменших квадратів.
+
+[Ridge regression]{.hi} сплачує набагато більший штраф за $\beta_1=3000$, ніж $\beta_1=3$.
+<br>Ви не отримаєте однакові (масштабовані) оцінки, змінюючи одиниці вимірювання.
+
+
+**Рішення** Стандартизуйте свої змінні, _тобто_,<br> `recipes::step_normalize()`.
+
+---
+
+## Приклад
+
+Повернемося до набору кредитних даних і [попередньої обробки за допомогою `tidymodels`](https://www.kaggle.com/edwardarubin/intro-tidymodels-preprocessing).
+
+У нас є 11 предикторів і числовий результат "баланс".
+
+Ми можемо стандартизувати наші предиктори за допомогою `step_normalize()` з `recipes`:
+
+```{r, credit-data-work2}
+# Load the credit dataset
+credit_df = ISLR::Credit %>% clean_names()
+# Processing recipe: Define ID, standardize, create dummies, rename (lowercase)
+credit_recipe = credit_df %>% recipe(balance ~ .) %>% 
+  update_role(id, new_role = "id variable") %>% 
+  step_normalize(all_predictors() & all_numeric()) %>% 
+  step_dummy(all_predictors() & all_nominal()) %>% 
+  step_rename_at(everything(), fn = str_to_lower)
+# Time to juice
+credit_clean = credit_recipe %>% prep() %>% juice()
+```
+
+---
+
+## Приклад
+
+Для ridge regression в R ми будемо використовувати `glmnet()` з пакета `glmnet`.
+
+Основними аргументами `glmnet()` є
+
+:::: {.columns}
+
+::: {.column}
+- `x` **матриця** предикторів
+- `y` змінна результату як вектор
+- `standardize` (`T` або `F`)
+- параметр `alpha` elasticnet
+  + `alpha=0` дає ridge
+  + `alpha=1` дає lasso
+:::
+
+::: {.column}
+- параметр `lambda` гіперпараметр
+- `nlambda` альтернативно, R вибирає послідовність значень для λ
+:::
+
+::::
+
+---
+
+## Приклад
+
+Нам просто потрібно визначити спадаючу послідовність для $\lambda$.
+```{r, ex-ridge-glmnet}
+# Define our range of lambdas (glmnet wants decreasing range)
+lambdas = 10^seq(from = 5, to = -2, length = 100)
+# Fit ridge regression
+est_ridge = glmnet(
+  x = credit_clean %>% dplyr::select(-balance, -id) %>% as.matrix(),
+  y = credit_clean$balance,
+  standardize = F,
+  alpha = 0,
+  lambda = lambdas
+)
+```
+
+Вихід `glmnet` (тут `est_ridge`) містить оцінені коефіцієнти для $\lambda$. Ви можете використовувати `predict()`, щоб отримати коефіцієнти для додаткових значень $\lambda$.
+
+---
+
+**Коефіцієнти Ridge  регресії** для λ від 0,01 до 100 000
+```{r, plot-ridge-glmnet, echo = F}
+ridge_df = est_ridge %>% coef() %>% t() %>% as.matrix() %>% as.data.frame()
+ridge_df %<>% dplyr::select(-1) %>% mutate(lambda = est_ridge$lambda)
+ridge_df %<>% gather(key = "variable", value = "coefficient", -lambda)
+ggplot(
+  data = ridge_df,
+  aes(x = lambda, y = coefficient, color = variable)
+) +
+geom_line() +
+scale_x_continuous(
+  expression(lambda),
+  labels = c("0.1", "10", "1,000", "100,000"),
+  breaks = c(0.1, 10, 1000, 100000),
+  trans = "log10"
+) +
+scale_y_continuous("Ridge coefficient") +
+scale_color_viridis_d("Predictor", option = "magma", end = 0.9) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+## Приклад
+
+`glmnet` також надає зручну функцію перехресної перевірки: `cv.glmnet()`.
+```{r, cv-ridge, cache = F}
+# Define our lambdas
+lambdas = 10^seq(from = 5, to = -2, length = 100)
+# Cross validation
+ridge_cv = cv.glmnet(
+  x = credit_clean %>% dplyr::select(-balance, -id) %>% as.matrix(),
+  y = credit_clean$balance,
+  alpha = 0,
+  standardize = F,
+  lambda = lambdas,
+  # New: How we make decisions and number of folds
+  type.measure = "mse",
+  nfolds = 5
+)
+```
+
+---
+
+**Перехресна перевірка RMSE і λ**: Яка λ мінімізує CV RMSE?
+```{r, plot-cv-ridge, echo = F}
+# Create data frame of our results
+ridge_cv_df = data.frame(
+  lambda = ridge_cv$lambda,
+  rmse = sqrt(ridge_cv$cvm)
+)
+# Plot
+ggplot(
+  data = ridge_cv_df,
+  aes(x = lambda, y = rmse)
+) +
+geom_line() +
+geom_point(
+  data = ridge_cv_df %>% filter(rmse == min(rmse)),
+  size = 3.5,
+  color = red_pink
+) +
+scale_y_continuous("RMSE") +
+scale_x_continuous(
+  expression(lambda),
+  trans = "log10",
+  labels = c("0.1", "10", "1,000", "100,000"),
+  breaks = c(0.1, 10, 1000, 100000),
+) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+[Але інколи мінімум буде більш явний]{.absolute top="300"}
+
+---
+
+**Перехресна перевірка RMSE і λ**: Яка λ мінімізує CV RMSE?
+```{r, cv-ridge2, cache = F, include = F}
+# Define our lambdas
+lambdas = 10^seq(from = 5, to = -2, length = 100)
+# Cross validation
+ridge_cv2 = cv.glmnet(
+  x = credit_clean %>% dplyr::select(-balance, -rating, -limit, -income) %>% as.matrix(),
+  y = credit_clean$balance,
+  alpha = 0,
+  standardize = T,
+  lambda = lambdas,
+  # New: How we make decisions and number of folds
+  type.measure = "mse",
+  nfolds = 5
+)
+```
+
+```{r, plot-cv-ridge2, echo = F}
+# Create data frame of our results
+ridge_cv_df2 = data.frame(
+  lambda = ridge_cv2$lambda,
+  rmse = sqrt(ridge_cv2$cvm)
+)
+# Plot
+ggplot(
+  data = ridge_cv_df2,
+  aes(x = lambda, y = rmse)
+) +
+geom_line() +
+geom_point(
+  data = ridge_cv_df2 %>% filter(rmse == min(rmse)),
+  size = 3.5,
+  color = red_pink
+) +
+scale_y_continuous("RMSE") +
+scale_x_continuous(
+  expression(lambda),
+  trans = "log10",
+  labels = c("0.1", "10", "1,000", "100,000"),
+  breaks = c(0.1, 10, 1000, 100000),
+) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+## У `tidymodels`
+
+`tidymodels` також може провести перехресну перевірку (і підібрати) ridge  регресію.
+
+- Повернемося до нашої «специфікації» моделі `linear_reg()`.
+
+- Пенальті $\lambda$ (те, що ми хочемо налаштувати) є `penalty` замість `lambda`.
+
+- Встановіть `mixture = 0` всередині `linear_reg()` (те саме, що `alpha = 0` вище).
+
+- Використовуйте двигун `glmnet`.
+
+```{r, ridge-tidy-ex, eval = F}
+# Define the model
+model_ridge = linear_reg(penalty = tune(), mixture = 0) %>% set_engine("glmnet")
+```
+
+---
+
+[**Приклад ridge регресії з**]{.purple} [`tidymodels`]{.purple}
+
+```{r, credit-ridge-ex, eval = F}
+# Our range of lambdas
+lambdas = 10^seq(from = 5, to = -2, length = 1e3)
+# Define the 5-fold split
+set.seed(12345)
+credit_cv = credit_df %>% vfold_cv(v = 5)
+# Define the model
+model_ridge = linear_reg(penalty = tune(), mixture = 0) %>% set_engine("glmnet")
+# Define our ridge workflow
+workflow_ridge = workflow() %>%
+  add_model(model_ridge) %>% add_recipe(credit_recipe)
+# CV with our range of lambdas
+cv_ridge = 
+  workflow_ridge %>%
+  tune_grid(
+    credit_cv,
+    grid = data.frame(penalty = lambdas),
+    metrics = metric_set(rmse)
+  )
+# Show the best models
+cv_ridge %>% show_best()
+```
+
+---
+
+[З `tidymodels`...<br>Завершіть робочий процес і оцініть свою останню модель.<br>`finalize_workflow()`, `last_fit()` та `collect_predictions()`]{.absolute top="300"}
+
+---
+
+## Прогнози в R
+
+Коли ви знайдете $\lambda$ через перехресну перевірку,
+
+1\. Fit свою модель до повного набору даних за допомогою оптимального $\lambda$
+```{r, ridge-final-1, eval = F}
+# Fit final model
+final_ridge =  glmnet(
+  x = credit_clean %>% dplyr::select(-balance, -id) %>% as.matrix(),
+  y = credit_clean$balance,
+  standardize = T,
+  alpha = 0,
+  lambda = ridge_cv$lambda.min
+)
+```
+
+---
+
+## Прогнози в R
+
+Коли ви знайдете $\lambda$ через перехресну перевірку,
+
+1\. Fit свою модель до повного набору даних за допомогою оптимального $\lambda$<br>
+2\. Робіть прогнози
+```{r, ridge-final-2, eval = F}
+predict(
+  final_ridge,
+  type = "response",
+  # Our chosen lambda
+  s = ridge_cv$lambda.min,
+  # Our data
+  newx = credit_clean %>% dplyr::select(-balance, -id) %>% as.matrix()
+)
+```
+
+---
+
+## Стиснення
+
+Хоча ridge регресія штрафує коефіцієнти, і наближає їх до нуля, вона ніколи зводить їх до абсолютного нуля.
+
+**Недоліки**
+
+1. Ми не можемо використовувати ridge регресію для вибору підмножини/фічей
+2. Ми часто отримуємо купу малих коефіцієнтів.
+
+. . .
+
+Чи можемо ми просто обнулити коефіцієнти?
+
+. . .
+
+Так. Тільки не з ridge (через $\sum_j \hat{\beta}_j^2$).
+
+# Lasso
+
+## Lasso
+
+Lasso просто замінює квадрат коефіцієнтів ridge регресії на абсолютні значення.
+
+. . .
+
+[Ridge regression]{.hi}
+$$
+\begin{align}
+\min_{\hat{\beta}^R} \sum_{i=1}^{n} \big( \color{#FFA500}{y_i} - \color{#6A5ACD}{\hat{y}_i} \big)^2 + \color{#e64173}{\lambda \sum_{j=1}^{p} \beta_j^2}
+\end{align}
+$$
+[Lasso]{.hi-grey}
+$$
+\begin{align}
+\min_{\hat{\beta}^L} \sum_{i=1}^{n} \big( \color{#FFA500}{y_i} - \color{#6A5ACD}{\hat{y}_i} \big)^2 + \color{#8AA19E}{\lambda \sum_{j=1}^{p} \big|\beta_j\big|}
+\end{align}
+$$
+
+Все інше буде таким же, крім одного аспекту...
+
+## Стиснення
+
+На відміну від Ridge, штраф Lasso не збільшується з розміром $\beta_j$
+
+. . .
+
+Ця функція має дві [переваги]{.hi-slate}
+
+1. Деякі коефіцієнти будуть [дорівнювати нулю]{.hi} — ми отримуємо «розріджені» моделі.
+2. Ласо можна використовувати для **вибору** підмножини/фічей.
+
+. . .
+
+Нам все одно треба уважно вибрати $\color{#8AA19E}{\lambda}$.
+
+---
+
+## Приклад
+
+Ми також можемо використовувати `glmnet()` для лассо.
+
+[Ключові аргументи]{.hi-slate} для `glmnet()` є
+
+:::: {.columns}
+
+::: {.column}
+- `x` **матриця** предикторів
+- `y` вихід моделі як вектор
+- `standardize` (`T` або `F`)
+- параметр elasticnet `alpha`
+   - `alpha=0` дає ridge
+   - [`alpha=1` дає lasso]{.hi}
+:::
+
+::: {.column}
+- `lambda`: гіперпараметр
+- `nlambda` альтернативно, R вибирає послідовність значень для $\lambda$
+:::
+
+::::
+
+---
+
+## Приклад
+Знову ж таки, ми визначаємо спадаючу послідовність для $\lambda$...
+```{r, ex-lasso-glmnet, eval = F}
+# Define our range of lambdas (glmnet wants decreasing range)
+lambdas = 10^seq(from = 5, to = -2, length = 100)
+# Fit lasso regression
+est_lasso = glmnet(
+  x = credit_clean %>% dplyr::select(-balance, -id) %>% as.matrix(),
+  y = credit_clean$balance,
+  standardize = F,
+  `alpha = 1`,
+  lambda = lambdas
+)
+```
+
+```{r, ex-lasso-glmnet-duplicate, eval = T, include = F}
+# Define our range of lambdas (glmnet wants decreasing range)
+lambdas = 10^seq(from = 5, to = -2, length = 100)
+# Fit lasso regression
+est_lasso = glmnet(
+  x = credit_clean %>% dplyr::select(-balance, -id) %>% as.matrix(),
+  y = credit_clean$balance,
+  standardize = F,
+  alpha = 1,
+  lambda = lambdas
+)
+```
+
+Вихід `glmnet` (тут `est_lasso`) містить оцінені коефіцієнти для $\lambda$. Ви можете використовувати `predict()`, щоб отримати коефіцієнти для додаткових значень $\lambda$.
+
+---
+
+**Коефіцієнти ласо** для $\lambda$ від 0,01 до 100 000
+```{r, plot-lasso-glmnet, echo = F}
+lasso_df = est_lasso %>% coef() %>% t() %>% as.matrix() %>% as.data.frame()
+lasso_df %<>% dplyr::select(-1) %>% mutate(lambda = est_lasso$lambda)
+lasso_df %<>% gather(key = "variable", value = "coefficient", -lambda)
+ggplot(
+  data = lasso_df,
+  aes(x = lambda, y = coefficient, color = variable)
+) +
+geom_line() +
+scale_x_continuous(
+  expression(lambda),
+  labels = c("0.1", "10", "1,000", "100,000"),
+  breaks = c(0.1, 10, 1000, 100000),
+  trans = "log10"
+) +
+scale_y_continuous("Lasso coefficient") +
+scale_color_viridis_d("Predictor", option = "magma", end = 0.9) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+## Приклад
+
+Ми також можемо перехресно перевірити $\lambda$ за допомогою `cv.glmnet()`.
+
+```{r, cv-lasso, cache = T}
+# Define our lambdas
+lambdas = 10^seq(from = 5, to = -2, length = 100)
+# Cross validation
+lasso_cv = cv.glmnet(
+  x = credit_clean %>% dplyr::select(-balance, -id) %>% as.matrix(),
+  y = credit_clean$balance,
+  alpha = 1,
+  standardize = F,
+  lambda = lambdas,
+  # New: How we make decisions and number of folds
+  type.measure = "mse",
+  nfolds = 5
+)
+```
+
+---
+
+Перехресна перевірка RMSE та λ: який λ мінімізує CV RMSE?
+```{r, plot-cv-lasso, echo = F}
+# Create data frame of our results
+lasso_cv_df = data.frame(
+  lambda = lasso_cv$lambda,
+  rmse = sqrt(lasso_cv$cvm)
+)
+# Plot
+ggplot(
+  data = lasso_cv_df,
+  aes(x = lambda, y = rmse)
+) +
+geom_line() +
+geom_point(
+  data = lasso_cv_df %>% filter(rmse == min(rmse)),
+  size = 3.5,
+  color = "#8AA19E"
+) +
+scale_y_continuous("RMSE") +
+scale_x_continuous(
+  expression(lambda),
+  trans = "log10",
+  labels = c("0.1", "10", "1,000", "100,000"),
+  breaks = c(0.1, 10, 1000, 100000),
+) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+[І знову мінімум може бути більш явний]{.absolute top="300"}
+
+---
+
+Перехресна перевірка RMSE та λ: який λ мінімізує CV RMSE?
+```{r, cv-lasso2, cache = T, include = F}
+# Define our lambdas
+lambdas = 10^seq(from = 5, to = -2, length = 100)
+# Cross validation
+lasso_cv2 = cv.glmnet(
+  x = credit_clean %>% dplyr::select(-balance, -rating, -limit, -income, -id) %>% as.matrix(),
+  y = credit_clean$balance,
+  alpha = 1,
+  standardize = F,
+  lambda = lambdas,
+  # New: How we make decisions and number of folds
+  type.measure = "mse",
+  nfolds = 5
+)
+```
+
+```{r, plot-cv-lasso2, echo = F}
+# Create data frame of our results
+lasso_cv_df2 = data.frame(
+  lambda = lasso_cv2$lambda,
+  rmse = sqrt(lasso_cv2$cvm)
+)
+# Plot
+ggplot(
+  data = lasso_cv_df2,
+  aes(x = lambda, y = rmse)
+) +
+geom_line() +
+geom_point(
+  data = lasso_cv_df2 %>% filter(rmse == min(rmse)),
+  size = 3.5,
+  color = "#8AA19E"
+) +
+scale_y_continuous("RMSE") +
+scale_x_continuous(
+  expression(lambda),
+  trans = "log10",
+  labels = c("0.1", "10", "1,000", "100,000"),
+  breaks = c(0.1, 10, 1000, 100000),
+) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+[Який метод використовувати?]{.absolute top="300"}
+
+---
+
+## Ridge чи lasso?
+
+:::: {.columns}
+
+::: {.column}
+Ridge regression
+<br>[+] зменшує $\hat{\beta}_j$ близько до 0
+<br>[-] багато маленьких $\hat\beta_j$
+<br>[-] не працює для формування підвибірки
+<br>[-] важко інтерпретувати вихід моделі
+<br>[+] краще, коли всі $\beta_j\neq$ 0
+<br><br> Best: $p$ великий & $\beta_j\approx\beta_k$
+:::
+
+::: {.column}
+Lasso
+
+<br>[+] зменшує $\hat{\beta}_j$ до 0
+<br>[+] багато $\hat\beta_j=$ 0
+<br>[+] підходить для підвибірки
+<br>[+] розріджені моделі легше інтерпретувати
+<br>[-] неявно передбачає деяке $\beta=$ 0
+<br><br> Best: $p$ великий і багато $\beta_j\approx$ 0
+:::
+
+::::
+
+Ні ridge... а ні lasso не домінують над іншими моделями.
+
+---
+
+[Ridge **та** lasso?<br>**Elasticnet** поєднує Ridge та lasso.]{.absolute top="300"}
+
+# Elasticnet
+
+## Elasticnet
+
+Elasticnet** поєднує Ridge та lasso.
+
+
+$$
+\begin{align}
+\min_{\beta^E} \sum_{i=1}^{n} \big( \color{#FFA500}{y_i} - \color{#6A5ACD}{\hat{y}_i} \big)^2 + \color{#181485}{(1-\alpha)} \color{#e64173}{\lambda \sum_{j=1}^{p} \beta_j^2} + \color{#181485}{\alpha} \color{#8AA19E}{\lambda \sum_{j=1}^{p} \big|\beta_j\big|}
+\end{align}
+$$
+
+Тепер у нас є два параметри налаштування: $\lambda$ (penalty) і $\color{#181485}{\alpha}$ (mixture).
+
+. . .
+
+Пам’ятаєте аргумент `alpha` в `glmnet()`?
+
+- $\color{#e64173}{\alpha = 0}$ визначає Ridge
+- $\color{#8AA19E}{\alpha=1}$ визначає lasso.
+
+---
+
+## Ridge **та** lasso?
+
+Ми можемо використовувати `tune()` з `tidymodel` для перехресної перевірки як $\alpha$, так і $\lambda$.
+
+Потрібно враховувати всі комбінації двох параметрів.
+<br>Ця комбінація може створити *багато* моделей для оцінки.
+
+Наприклад,
+- 1000 значень $\lambda$
+- 1000 значень $\alpha$
+
+залишає вам 1 000 000 моделей для оцінки
+
+---
+
+**Cross validating elasticnet** у `tidymodels`
+```{r, credit-net-ex, eval = F}
+# Our range of λ and α
+lambdas = 10^seq(from = 5, to = -2, length = 1e2)
+alphas = seq(from = 0, to = 1, by = 0.1)
+# Define the 5-fold split
+set.seed(12345)
+credit_cv = credit_df %>% vfold_cv(v = 5)
+# Define the elasticnet model
+model_net = linear_reg(
+  penalty = tune(), mixture = tune()
+) %>% set_engine("glmnet")
+# Define our workflow
+workflow_net = workflow() %>%
+  add_model(model_net) %>% add_recipe(credit_recipe)
+# CV elasticnet with our range of lambdas
+cv_net = 
+  workflow_net %>%
+  tune_grid(
+    credit_cv,
+    grid = expand_grid(mixture = alphas, penalty = lambdas),
+    metrics = metric_set(rmse)
+  )
+```
+
+---
+
+**Cross validating elasticnet** у `tidymodels` з [`grid_regular()`]{.orange}
+```{r, credit-net-ex-2, eval = F}
+#| code-line-numbers: '19'
+
+# Our range of λ and α
+lambdas = 10^seq(from = 5, to = -2, length = 1e2)
+alphas = seq(from = 0, to = 1, by = 0.1)
+# Define the 5-fold split
+set.seed(12345)
+credit_cv = credit_df %>% vfold_cv(v = 5)
+# Define the elasticnet model
+model_net = linear_reg(
+  penalty = tune(), mixture = tune()
+) %>% set_engine("glmnet")
+# Define our workflow
+workflow_net = workflow() %>%
+  add_model(model_net) %>% add_recipe(credit_recipe)
+# CV elasticnet with our range of lambdas
+cv_net = 
+  workflow_net %>%
+  tune_grid(
+    credit_cv,
+    grid = grid_regular(mixture(), penalty(), levels = 100:100),
+    metrics = metric_set(rmse)
+  )
+```
+
+---
+
+[Краща модель мала $\lambda\approx$ 0,628 і $\alpha\approx$ 0,737.<br>CV з elasticnet зменшив RMSE з 118 до 101.]{.absolute top="300"}
+
+# Дякую за увагу! {.unnumbered .unlisted}
+
+<br>
+<br>
+
+`r fa("telegram")` [Data Mirosh](https://t.me/araprof)
+
+`r fa("github")` [\@aranaur](https://github.com/Aranaur)
+
+`r fa("envelope")` ihor.miroshnychenko\@kneu.ua
+
+`r fa("linkedin")` [\@ihormiroshnychenko](https://www.linkedin.com/in/ihormiroshnychenko/)
+
+`r fa("house")` [aranaur.rbind.io](https://aranaur.rbind.io)
+
+
+
