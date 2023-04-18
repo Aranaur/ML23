@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.2.269">
 
   <meta name="author" content="Ігор Мірошниченко">
-  <meta name="dcterms.date" content="2023-04-03">
+  <meta name="dcterms.date" content="2023-04-17">
   <title>05 - Задача класифікації: логістична регресія</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -415,7 +415,7 @@
     </div>
 </div>
 
-  <p class="date">2023-04-03</p>
+  <p class="date">2023-04-17</p>
 </section><section id="TOC">
 <nav role="doc-toc"> 
 <h2 id="toc-title">ЗМІСТ</h2>
@@ -433,7 +433,7 @@
 </section>
 <section id="вступ" class="slide level2">
 <h2>Вступ</h2>
-<p><span class="attn">Проблеми регресії</span> намагаються передбачити число, яке матиме результат — цілі числа (<em>наприклад</em>, кількість котів), дійсні (_наприклад, номер будинку) тощо…</p>
+<p><span class="attn">Проблеми регресії</span> намагаються передбачити число, яке матиме результат — цілі числа (<em>наприклад</em>, кількість котів), дійсні (<em>наприклад</em>, номер будинку) тощо…</p>
 <div class="fragment">
 <p><span class="attn">Проблеми класифікації</span> натомість прагнуть передбачити категорію результату</p>
 <ul>
@@ -535,7 +535,7 @@
 <ol type="1">
 <li><p>оцінити умовну ймовірність <span class="math inline">\(y_i = 1\)</span>, <em>тобто</em>, <span class="math inline">\(\mathop{\text{Pr}}\left(y_o = 1 \mid x_o\right)\)</span></p></li>
 <li><p>не обмежені між 0 і 1</p></li>
-<li><p>забезпечити порядок і зрозумілу оцінку ймовірності</p></li>
+<li><p>Враховує порядок і зрозумілу оцінку ймовірності</p></li>
 </ol>
 <p><span class="note">Інші переваги:</span> Коефіцієнти легко інтерпретуються + ми знаємо, як працює OLS.</p>
 </section>
@@ -779,13 +779,13 @@
 </section>
 <section class="slide level2">
 
-<p>Прогнози .hi-orange[логістичної регресії] <span class="math inline">\(\mathop{p}(\text{Balance})\)</span></p>
+<p>Прогнози <span class="hi-orange">логістичної регресії</span> <span class="math inline">\(\mathop{p}(\text{Balance})\)</span></p>
 
 <img data-src="05_files/figure-revealjs/plot-default-logistic-2-1.png" width="864" class="r-stretch"></section>
 <section class="slide level2">
 
 <p><span class="note">Примітка:</span> Усе, що ми робили досі, поширюється на моделі з багатьма предикторами.</p>
-<p><span class="note">Старі новини:</span> Ви можете використовувати <code>predict()</code>, щоб отримати прогнози з об’єктів <code>glm</code>.</p>
+<p><span class="note">Вже відомо:</span> Ви можете використовувати <code>predict()</code>, щоб отримати прогнози з об’єктів <code>glm</code>.</p>
 <p><strong>Нове та важливо:</strong> <code>predict()</code> створює кілька <code>type</code> передбачень</p>
 <ol type="1">
 <li><p><code>type = "response"</code> передбачає <em>шкалу залежної змінної</em> <br>для логістичної регресії це означає <strong>прогнозовані ймовірності</strong> (від 0 до 1)</p></li>
@@ -805,11 +805,255 @@
 <span id="cb5-2"><a href="#cb5-2"></a>y_hat <span class="ot">=</span> <span class="fu">as.numeric</span>(p_hat <span class="sc">&gt;=</span> <span class="fl">0.5</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section></section>
+<section>
 <section id="оцінювання-1" class="title-slide slide level1 center">
 <h1>Оцінювання</h1>
 
 </section>
+<section id="confusion-matrix" class="slide level2">
+<h2>Confusion matrix</h2>
+<p><span class="attn">матриця невідповідності</span> є зручним способом відображення <br><span class="hi-orange">вірних</span> та <span class="hi-purple">хибник</span> прогнозів для кожного класу нашого результату.</p>
+<div class="cell">
+<div class="cell-output-display">
 
+<table class="huxtable" style="border-collapse: collapse; border: 0px; margin-bottom: 2em; margin-top: 2em; ; margin-left: auto; margin-right: auto;  " id="tab:cm-right-wrong">
+<colgroup><col><col><col><col></colgroup><tbody><tr>
+<td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></td><th style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></th><td colspan="2" style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Truth</td></tr>
+<tr>
+<td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></td><th style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></th><td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 1pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">No</td><td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 1pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Yes</td></tr>
+<tr>
+<td rowspan="2" style="vertical-align: middle; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Prediction</td><th style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 1pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">No</th><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 1pt 0pt 0pt 1pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;"><span style="color: rgb(255, 165, 0);">True Negative (TN)</span></td><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 1pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;"><span style="color: rgb(106, 90, 205);">False Negative (FN)</span></td></tr>
+<tr>
+<th style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 1pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Yes</th><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 1pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;"><span style="color: rgb(106, 90, 205);">False Positive (FP)</span></td><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;"><span style="color: rgb(255, 165, 0);">True Positive (TP)</span></td></tr>
+</tbody></table>
+
+</div>
+</div>
+<p><span class="attn">Accuracy</span> методу – це частка <span class="orange">правильних</span> передбачень, <em>тобто</em>, <span class="center"><strong>Accuracy</strong> = (<span class="hi-orange">TN</span> + <span class="hi-orange">TP</span>) / (<span class="hi-orange">TN</span> + <span class="hi-orange">TP</span> + <span class="hi-purple">FN</span> + <span class="hi-purple">FP</span>)</span></p>
+<p>Ця матриця також допомагає відобразити багато інших показників оцінки.</p>
+</section>
+<section id="confusion-matrix-1" class="slide level2">
+<h2>Confusion matrix</h2>
+<p><span class="attn">Чутливість:</span> частка позитивних результатів <span class="math inline">\(Y=1\)</span>, які ми правильно прогнозуємо.</p>
+<p><span class="center"><strong>Sensitivity</strong> = <span class="hi-orange">TP</span> / (<span class="hi-orange">TP</span> + <span class="hi-purple">FN</span>)</span></p>
+<div class="cell">
+<div class="cell-output-display">
+
+<table class="huxtable" style="border-collapse: collapse; border: 0px; margin-bottom: 2em; margin-top: 2em; ; margin-left: auto; margin-right: auto;  " id="tab:cm-sensitivity">
+<colgroup><col><col><col><col></colgroup><tbody><tr>
+<td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></td><th style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></th><td colspan="2" style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Truth</td></tr>
+<tr>
+<td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></td><th style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></th><td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 1pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">No</td><td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 1pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"><span style="color: rgb(106, 90, 205);">Yes</span></td></tr>
+<tr>
+<td rowspan="2" style="vertical-align: middle; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Prediction</td><th style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 1pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">No</th><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 1pt 0pt 0pt 1pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;">True Negative (TN)</td><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 1pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;"><span style="color: rgb(106, 90, 205);">False Negative (FN)</span></td></tr>
+<tr>
+<th style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 1pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Yes</th><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 1pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;">False Positive (FP)</td><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;"><span style="color: rgb(255, 165, 0);">True Positive (TP)</span></td></tr>
+</tbody></table>
+
+</div>
+</div>
+<p>Sensitivity також називається <span class="attn">recall</span> і <span class="attn">true-positive rate</span>.</p>
+<p>Одиниця мінус sensitivity це <span class="attn">частка помилок типу II</span>.</p>
+</section>
+<section id="confusion-matrix-2" class="slide level2">
+<h2>Confusion matrix</h2>
+<p><span class="attn">Specificity:</span> частка негативних результати <span class="math inline">\((Y=0)\)</span>, які ми правильно передбачили.</p>
+<p><span class="center"><strong>Specificity</strong> = <span class="hi-orange">TN</span> / (<span class="hi-orange">TN</span> + <span class="hi-purple">FP</span>)</span></p>
+<div class="cell">
+<div class="cell-output-display">
+
+<table class="huxtable" style="border-collapse: collapse; border: 0px; margin-bottom: 2em; margin-top: 2em; ; margin-left: auto; margin-right: auto;  " id="tab:cm-specificity">
+<colgroup><col><col><col><col></colgroup><tbody><tr>
+<td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></td><th style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></th><td colspan="2" style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Truth</td></tr>
+<tr>
+<td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></td><th style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"></th><td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 1pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;"><span style="color: rgb(106, 90, 205);">No</span></td><td style="vertical-align: top; text-align: center; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 1pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Yes</td></tr>
+<tr>
+<td rowspan="2" style="vertical-align: middle; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Prediction</td><th style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 1pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">No</th><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 1pt 0pt 0pt 1pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;"><span style="color: rgb(255, 165, 0);">True Negative (TN)</span></td><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 1pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;">False Negative (FN)</td></tr>
+<tr>
+<th style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 1pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: bold;">Yes</th><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 1pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;"><span style="color: rgb(106, 90, 205);">False Positive (FP)</span></td><td style="vertical-align: top; text-align: left; white-space: normal; border-style: solid solid solid solid; border-width: 0pt 0pt 0pt 0pt;    padding: 6pt 6pt 6pt 6pt; font-weight: normal;">True Positive (TP)</td></tr>
+</tbody></table>
+
+</div>
+</div>
+<p>Одиниця мінус sensitivity це <span class="attn">false-positive rate</span> або <span class="attn">частка помилок типу I</span>.</p>
+</section>
+<section id="confusion-matrix-3" class="slide level2">
+<h2>Confusion matrix</h2>
+<p><span class="attn">Precision:</span> частка прогнозованих позитивних результатів <span class="math inline">\((\hat{Y}=1)\)</span>, які є правильними.</p>
+<p><span class="center"><strong>Precision:</strong> = <span class="hi-orange">TP</span> / (<span class="hi-orange">TP</span> + <span class="hi-purple">FP</span>)</span></p>
+</section>
+<section id="що-обрати" class="slide level2 smaller">
+<h2>Що обрати?</h2>
+<p><span class="qa">Q</span> Отже, <em>який</em> критерій ми повинні використовувати?</p>
+<p><span class="qa">A</span> Все залежить від умов та контексту.</p>
+<ul>
+<li>Чи сtrue positives більш вагомі ніж true negatives? <br><span class="note">Sensitivity</span> буде ключовим.</li>
+</ul>
+<div class="fragment">
+<ul>
+<li>Ви хочете мати високу впевненість у прогнозованих позитивних результатах? <br><span class="note">Precision</span> — ваш друг</li>
+</ul>
+</div>
+<div class="fragment">
+<p>— Всі помилки рівні? <br> <span class="note">Accuracy</span> ідеальна.</p>
+</div>
+<div class="fragment">
+<p><a href="https://yardstick.tidymodels.org/reference/index.html">Є багато іншого</a>, <em>наприклад</em>, оцінка <span class="attn">F<sub>1</sub></span> поєднує в собі точність і чутливість.</p>
+</div>
+</section>
+<section id="confusion-в-r" class="slide level2">
+<h2>Confusion в R</h2>
+<p><a href="https://yardstick.tidymodels.org/reference/conf_mat.html"><code>conf_mat()</code> з <code>yardstick</code></a> (<code>tidymodels</code>) обчислює Confusion Matrix.</p>
+<ul>
+<li><p><code>data</code>: набір даних</p></li>
+<li><p><code>truth</code>: назва стовпця істинних значень</p></li>
+<li><p><code>estimate</code>: назва стовпця наших прогнозів</p></li>
+</ul>
+<div class="fragment">
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1"></a>cm_logistic <span class="ot">=</span> <span class="fu">conf_mat</span>(</span>
+<span id="cb6-2"><a href="#cb6-2"></a>  <span class="co"># Create a dataset of truth and predictions</span></span>
+<span id="cb6-3"><a href="#cb6-3"></a>  <span class="at">data =</span> <span class="fu">tibble</span>(</span>
+<span id="cb6-4"><a href="#cb6-4"></a>    <span class="at">y_hat =</span> y_hat <span class="sc">%&gt;%</span> <span class="fu">as.factor</span>(),</span>
+<span id="cb6-5"><a href="#cb6-5"></a>    <span class="at">y =</span> default_df<span class="sc">$</span>i_default <span class="sc">%&gt;%</span> <span class="fu">as.factor</span>()</span>
+<span id="cb6-6"><a href="#cb6-6"></a>  ),</span>
+<span id="cb6-7"><a href="#cb6-7"></a>  <span class="at">truth =</span> y, <span class="at">estimate =</span> y_hat</span>
+<span id="cb6-8"><a href="#cb6-8"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</div>
+</section>
+<section id="confusion-в-r-1" class="slide level2">
+<h2>Confusion в R</h2>
+<p><a href="https://yardstick.tidymodels.org/reference/conf_mat.html"><code>conf_mat()</code> з <code>yardstick</code></a> (<code>tidymodels</code>) обчислює Confusion Matrix.</p>
+<ul>
+<li><p><code>data</code>: набір даних</p></li>
+<li><p><code>truth</code>: назва стовпця істинних значень</p></li>
+<li><p><code>estimate</code>: назва стовпця наших прогнозів</p></li>
+</ul>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>          Truth
+Prediction    0    1
+         0 9625  233
+         1   42  100</code></pre>
+</div>
+</div>
+</section>
+<section id="пороги" class="slide level2">
+<h2>Пороги</h2>
+<p>Ваше налаштування також визначає «оптимальний» поріг, який переміщує передбачення з одного класу (наприклад, за замовчуванням = Ні) до іншого класу (за замовчуванням = Так).</p>
+<p>Класифікатор Байєса передбачає поріг ймовірності 0,5.</p>
+<p>Класифікатор Байєса неможливо покращити з точки зору точності, але якщо у вас є інші цілі, крім точності, вам слід розглянути інші порогові значення.</p>
+</section>
+<section class="slide level2">
+
+<p>Коли ми змінюємо порогове значення, наші частоти помилок (<span class="hi-purple">I</span> типу, <span class="hi-orange">II</span> типу та <span class="hi-slate">загальні</span>) змінюються.</p>
+
+<img data-src="05_files/figure-revealjs/plot-threshold-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p><span class="attn">ROC</span> кривавідображає істинні (TP/P) і хибнопозитивні показники (FP/N).</p>
+
+<img data-src="05_files/figure-revealjs/plot-roc-1.png" width="864" class="r-stretch"><div class="fragment">
+<p>«Найкраща ефективність» означає, що <span class="pink">ROC</span> крива наближається до верхнього лівого кута.</p>
+</div>
+</section>
+<section class="slide level2">
+
+<p><span class="hi-orange">AUC</span> формує <span class="orange">площу під кривою (ROC)</span>.</p>
+
+<img data-src="05_files/figure-revealjs/plot-auc-1.png" width="864" class="r-stretch"><div class="fragment">
+<p>«Найкраща ефективність» означає, що <span class="orange">AUC</span> наближається до 1. Випадковий шанс: 0,5</p>
+</div>
+</section>
+<section class="slide level2">
+
+<p><span class="qa">Q</span> Отже, яку інформацію нам дає AUC?</p>
+<div class="fragment">
+<p><span class="qa">A</span> AUC повідомляє нам, наскільки ми <strong>розділили</strong> <em>позитивні</em> і <em>негативні</em> мітки.</p>
+</div>
+</section>
+<section class="slide level2">
+
+<p><span class="ex">Приклад:</span> Розподіл імовірностей для <span class="hi-orange">негативний</span> і <span class="hi-purple">позитивний</span> результатів.</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex1-d-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>Для будь-якого заданого <span class="hi-pink">порогового значення</span></p>
+
+<img data-src="05_files/figure-revealjs/roc-ex1-threshold-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>Для будь-якого заданого <span class="hi-pink">порогового значення</span> ми отримуємо <span class="hi-yellow">false positives</span></p>
+
+<img data-src="05_files/figure-revealjs/roc-ex1-threshold2-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>Для будь-якого заданого <span class="hi-pink">порогового значення</span> ми отримуємо false positives та <span class="hi-yellow">true positives</span></p>
+
+<img data-src="05_files/figure-revealjs/roc-ex1-threshold3-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>… рухаючись вздовж всіх можливих порогах генерує <span class="hi-pink">ROC</span> (<span class="hi-orange">AUC</span> ≈ 0.872).</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex1-roc-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>Збільшення розриву між результатами <span class="hi-orange">negative</span> і <span class="hi-purple">positive</span>…</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex2-d-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>… зменшує помилку (зміщує <span class="hi-pink">ROC</span>) і збільшує <span class="hi-orange">AUC</span> (≈ 0.994).</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex2-roc-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>Подальше збільшення розриву між результатами <span class="hi-orange">negative</span> і <span class="hi-purple">positive</span>…</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex3-d-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>… зменшує помилку (зміщує <span class="hi-pink">ROC</span>) і збільшує <span class="hi-orange">AUC</span> (≈ 1).</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex3-roc-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>Невелика різниця («вгадування») між результатами <span class="hi-orange">негативний</span> і <span class="hi-purple">позитивний</span>…</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex4-d-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>… збільшує помилку (зміщує <span class="hi-pink">ROC</span>) і підштовхує <span class="hi-orange">AUC</span> до 0,5 (тут ≈ 0.523).</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex4-roc-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>Отримання результатів <span class="hi-orange">negative</span> і <span class="hi-purple">positive</span> у зворотному напрямку…</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex5-d-1.png" width="864" class="r-stretch"></section>
+<section class="slide level2">
+
+<p>… збільшує помилку (зміщує <span class="hi-pink">ROC</span>) і штовхає <span class="hi-orange">AUC</span> до 0 (тут ≈ 0.012).</p>
+
+<img data-src="05_files/figure-revealjs/roc-ex5-roc-1.png" width="864" class="r-stretch"></section>
+<section id="auc-в-r" class="slide level2">
+<h2>AUC в R</h2>
+<p>Ви можете обчислити <strong>AUC</strong> у R за допомогою функції <a href="https://yardstick.tidymodels.org/reference/roc_auc.html"><code>roc_auc()</code> з <code>yardstick</code></a>. Перегляньте документацію для прикладів.</p>
+<p><strong>Logistic elasticnet</strong> <code>glmnet()</code> (для ridge , lasso та elasticnet) поширюється на logistic regression шляхом визначення аргументу <code>family</code> у <code>glmnet</code>, <em>тобто</em> ,</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1"></a><span class="co"># Example of logistic regression with lasso</span></span>
+<span id="cb8-2"><a href="#cb8-2"></a>logistic_lasso <span class="ot">=</span> <span class="fu">glmnet</span>(</span>
+<span id="cb8-3"><a href="#cb8-3"></a>  <span class="at">y =</span> y,</span>
+<span id="cb8-4"><a href="#cb8-4"></a>  <span class="at">x =</span> x,</span>
+<span id="cb8-5"><a href="#cb8-5"></a>  <span class="at">family =</span> <span class="st">"binomial"</span>,</span>
+<span id="cb8-6"><a href="#cb8-6"></a>  <span class="at">alpha =</span> <span class="dv">1</span>,</span>
+<span id="cb8-7"><a href="#cb8-7"></a>  <span class="at">lambda =</span> best_lambda</span>
+<span id="cb8-8"><a href="#cb8-8"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Ви також можете використовувати механізм <code>"glmnet"</code> для <code>logistic_reg()</code> в <code>parsnip</code>.</p>
+</section></section>
 <section id="дякую-за-увагу" class="title-slide slide level1 unnumbered unlisted center">
 <h1>Дякую за увагу!</h1>
 <p><br> <br></p>

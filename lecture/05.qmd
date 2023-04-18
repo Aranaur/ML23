@@ -10,6 +10,7 @@ crossref:
   tbl-title: Таб.     # (default is "Table")
 format:
   revealjs: 
+    
     theme: [simple, custom.scss]
     # footer: <https://t.me/araprof>
     logo: img/logo.png
@@ -24,7 +25,6 @@ format:
     toc-depth: 1
     fig-width: 9
     fig-height: 5
-    
 filters:
   - line-highlight
     
@@ -75,7 +75,7 @@ slate      = "#314f4f"
 
 ## Вступ
 
-[Проблеми регресії]{.attn} намагаються передбачити число, яке матиме результат — цілі числа (_наприклад_, кількість котів), дійсні (_наприклад, номер будинку) тощо...
+[Проблеми регресії]{.attn} намагаються передбачити число, яке матиме результат — цілі числа (_наприклад_, кількість котів), дійсні (*наприклад*, номер будинку) тощо...
 
 . . .
 
@@ -215,7 +215,7 @@ $$Y=\begin{cases}
 
 2. не обмежені між 0 і 1
 
-3. забезпечити порядок і зрозумілу оцінку ймовірності
+3. Враховує порядок і зрозумілу оцінку ймовірності
 
 [Інші переваги:]{.note} Коефіцієнти легко інтерпретуються + ми знаємо, як працює OLS.
 
@@ -534,7 +534,7 @@ $$
 
 ---
 
-Прогнози .hi-orange[логістичної регресії] $\mathop{p}(\text{Balance})$
+Прогнози [логістичної регресії]{.hi-orange} $\mathop{p}(\text{Balance})$
 
 ```{r, plot-default-logistic-2, echo = F, cache = T}
 ggplot(data = default_df, aes(x = balance, y = i_default)) +
@@ -550,7 +550,7 @@ theme_minimal(base_size = 20, base_family = "Fira Sans Book")
 
 [Примітка:]{.note} Усе, що ми робили досі, поширюється на моделі з багатьма предикторами.
 
-[Старі новини:]{.note} Ви можете використовувати `predict()`, щоб отримати прогнози з об’єктів `glm`.
+[Вже відомо:]{.note} Ви можете використовувати `predict()`, щоб отримати прогнози з об’єктів `glm`.
 
 **Нове та важливо:** `predict()` створює кілька `type` передбачень
 
@@ -581,19 +581,632 @@ y_hat = as.numeric(p_hat >= 0.5)
 
 # Оцінювання
 
+## Confusion matrix
+
+```{r, calc-sensitivity, include = F}
+tmp_df = tibble(
+  y = default_df$i_default,
+  y_hat = y_hat,
+  y_hat_base = 0
+)
+ex_sensitivity = tmp_df %>% filter(y == 1) %>% transmute(y == y_hat) %>% unlist() %>% mean()
+ex_sensitivity_base = tmp_df %>% filter(y == 1) %>% transmute(y == y_hat_base) %>% unlist() %>% mean()
+```
+
+[матриця невідповідності]{.attn} є зручним способом відображення
+<br>[вірних]{.hi-orange} та [хибник]{.hi-purple} прогнозів для кожного класу нашого результату.
+
+```{r, default-confusion-matrix, include = F, cache = F}
+# Create data frame
+conf_df = data.frame(
+  No = c("True Negative (TN)", "False Positive (FP)"),
+  Yes = c("False Negative (FN)", "True Positive (TP)")
+)
+rownames(conf_df) = c("No", "Yes")
+# Create the matrix
+conf_mat = conf_df %>% hux() %>%
+  add_rownames("") %>% 
+  # add_colnames() %>%
+  insert_row(c("", "Truth", "Truth"), after = 0) %>% merge_cells(1, 2:3) %>%
+  insert_column(c("", "", "Prediction", "Prediction"), after = 0) %>% merge_cells(3:4, 1) %>%
+  set_bold(1:2, everywhere, T) %>%
+  set_bold(everywhere, 1:2, T) %>%
+  set_align(1:2, 1:4, "center") %>%
+  set_valign(3:4, 1, "middle") %>%
+  set_top_border(3, 3:4, 1) %>%
+  set_left_border(3:4, 3, 1)
+# Change "1" hanging around in column names
+conf_mat[2,2] = ""
+```
+
+```{r, cm-right-wrong, echo = F, eval = T}
+conf_mat %>%
+set_text_color(3,3,orange) %>%
+set_text_color(3,4,purple) %>%
+set_text_color(4,3,purple) %>%
+set_text_color(4,4,orange)
+```
+
+[Accuracy]{.attn} методу – це частка [правильних]{.orange} передбачень, _тобто_,
+[
+**Accuracy** = ([TN]{.hi-orange} + [TP]{.hi-orange}) / ([TN]{.hi-orange} + [TP]{.hi-orange} + [FN]{.hi-purple} + [FP]{.hi-purple})
+]{.center}
+
+Ця матриця також допомагає відобразити багато інших показників оцінки.
+
+---
+
+## Confusion matrix
+
+[Чутливість:]{.attn} частка позитивних результатів $Y=1$, які ми правильно прогнозуємо.
+
+[
+**Sensitivity** = [TP]{.hi-orange} / ([TP]{.hi-orange} + [FN]{.hi-purple})
+]{.center}
+
+```{r, cm-sensitivity, echo = F, eval = T}
+conf_mat %>%
+set_text_color(2:4,4,purple) %>%
+set_text_color(4,4,orange)
+```
+
+Sensitivity також називається [recall]{.attn} і [true-positive rate]{.attn}.
+
+Одиниця мінус sensitivity це [частка помилок типу II]{.attn}.
+
+---
+
+## Confusion matrix
+
+[Specificity:]{.attn} частка негативних результати $(Y=0)$, які ми правильно передбачили.
+
+[
+**Specificity** = [TN]{.hi-orange} / ([TN]{.hi-orange} + [FP]{.hi-purple})
+]{.center}
+
+```{r, cm-specificity, echo = F, eval = T}
+conf_mat %>%
+set_text_color(2:4,3,purple) %>%
+set_text_color(3,3,orange)
+```
+
+Одиниця мінус sensitivity це [false-positive rate]{.attn} або [частка помилок типу I]{.attn}.
+
+---
+
+## Confusion matrix
+
+[Precision:]{.attn} частка прогнозованих позитивних результатів $(\hat{Y}=1)$, які є правильними.
+
+[
+**Precision:** = [TP]{.hi-orange} / ([TP]{.hi-orange} + [FP]{.hi-purple})
+]{.center}
+
+---
+
+## Що обрати?{.smaller}
+
+[Q]{.qa} Отже, *який* критерій ми повинні використовувати?
+
+[A]{.qa} Все залежить від умов та контексту.
+
+- Чи сtrue positives більш вагомі ніж true negatives?
+<br>[Sensitivity]{.note} буде ключовим.
+
+. . .
+
+- Ви хочете мати високу впевненість у прогнозованих позитивних результатах?
+<br>[Precision]{.note} — ваш друг
+
+. . .
+
+— Всі помилки рівні?
+<br>
+[Accuracy]{.note} ідеальна.
+
+. . .
+
+[Є багато іншого](https://yardstick.tidymodels.org/reference/index.html), _наприклад_, оцінка [F~1~]{.attn} поєднує в собі точність і чутливість.
+
+---
+
+## Confusion в R
+
+[`conf_mat()` з `yardstick`](https://yardstick.tidymodels.org/reference/conf_mat.html) (`tidymodels`) обчислює Confusion Matrix.
+
+- `data`: набір даних
+
+- `truth`: назва стовпця істинних значень
+
+- `estimate`: назва стовпця наших прогнозів
+
+. . .
+
+```{r, est-cm}
+cm_logistic = conf_mat(
+  # Create a dataset of truth and predictions
+  data = tibble(
+    y_hat = y_hat %>% as.factor(),
+    y = default_df$i_default %>% as.factor()
+  ),
+  truth = y, estimate = y_hat
+)
+```
+
+---
+
+## Confusion в R
+
+[`conf_mat()` з `yardstick`](https://yardstick.tidymodels.org/reference/conf_mat.html) (`tidymodels`) обчислює Confusion Matrix.
+
+- `data`: набір даних
+
+- `truth`: назва стовпця істинних значень
+
+- `estimate`: назва стовпця наших прогнозів
 
 
+```{r, est-cm-out, echo = F}
+cm_logistic
+```
 
+---
 
+## Пороги
 
+Ваше налаштування також визначає «оптимальний» поріг, який переміщує передбачення з одного класу (наприклад, за замовчуванням = Ні) до іншого класу (за замовчуванням = Так).
 
+Класифікатор Байєса передбачає поріг ймовірності 0,5.
 
+Класифікатор Байєса неможливо покращити з точки зору точності, але якщо у вас є інші цілі, крім точності, вам слід розглянути інші порогові значення.
 
+---
 
+Коли ми змінюємо порогове значення, наші частоти помилок ([I]{.hi-purple} типу, [II]{.hi-orange} типу та [загальні]{.hi-slate}) змінюються.
 
+```{r, calc-threshold, include = F, cache = T}
+threshold_df = mclapply(
+  X = seq(0, 1, by = 0.00001),
+  FUN = function(cutoff) {
+    # The predictions
+    y_df = tibble(
+      y = default_df$i_default,
+      y_hat = (1 * (p_hat > cutoff))
+    )
+    # Results
+    data.frame(
+      cutoff = cutoff,
+      full = mean(y_df$y != y_df$y_hat),
+      type1 = y_df %>% filter(y == 0) %>% transmute(y != y_hat) %>% unlist() %>% mean(),
+      type2 = y_df %>% filter(y == 1) %>% transmute(y != y_hat) %>% unlist() %>% mean()
+    )
+  }
+) %>% bind_rows()
+```
 
+```{r, plot-threshold, echo = F}
+ggplot(data = threshold_df, aes(x = cutoff)) +
+geom_hline(yintercept = 0) +
+geom_line(aes(y = type1, color = "1"), size = 1) +
+geom_line(aes(y = type2, color = "2"), size = 1) +
+geom_line(aes(y = full, color = "3"), size = 0.3, linetype = "longdash") +
+scale_y_continuous("Error rate", labels = scales::percent) +
+scale_x_continuous("Threshold for positive prediction") +
+scale_color_manual(
+  "Error rate:",
+  labels = c("Type I (FP/N)", "Type II (FN/P)", "All"),
+  values = c(purple, orange, slate)
+) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
 
+---
 
+[ROC]{.attn} кривавідображає істинні (TP/P) і хибнопозитивні показники (FP/N).
+
+```{r, calc-roc, include = F, cache = T}
+roc_df = threshold_df %>% transmute(
+  fpr = type1,
+  tpr = 1 - type2
+) %>% as_tibble()
+```
+
+```{r, plot-roc, echo = F, fig.height = 6, cache = T}
+ggplot(data = roc_df, aes(x = fpr, y = tpr)) +
+geom_path(color = red_pink, size = 1) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_abline(intercept = 0, slope = 1, color = slate, linetype = "dotted", size = 0.5) +
+scale_x_continuous("False positive rate (FP/N)", labels = scales::percent) +
+scale_y_continuous("True positive rate (TP/P)", labels = scales::percent) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+. . .
+
+«Найкраща ефективність» означає, що [ROC]{.pink} крива наближається до верхнього лівого кута.
+
+---
+
+[AUC]{.hi-orange} формує [площу під кривою (ROC)]{.orange}.
+
+```{r, plot-auc, echo = F, fig.height = 6, cache = T}
+ggplot(data = roc_df, aes(x = fpr, y = tpr)) +
+geom_ribbon(
+  aes(ymin = 0, ymax = tpr),
+  fill = orange, alpha = 0.75
+) +
+geom_path(color = red_pink, size = 1) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_abline(intercept = 0, slope = 1, color = slate, linetype = "dotted", size = 0.5) +
+scale_x_continuous("False positive rate (FP/N)", labels = scales::percent) +
+scale_y_continuous("True positive rate (TP/P)", labels = scales::percent) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+. . .
+
+«Найкраща ефективність» означає, що [AUC]{.orange} наближається до 1. Випадковий шанс: 0,5
+
+---
+
+[Q]{.qa} Отже, яку інформацію нам дає AUC?
+
+. . .
+
+[A]{.qa} AUC повідомляє нам, наскільки ми **розділили** *позитивні* і *негативні* мітки.
+
+---
+
+```{r, roc-setup, include = F}
+# Distributions of positive and negative lables
+d_pos = function(x, sep) dbeta(x, 15, 15-sep)
+d_neg = function(x, sep) dbeta(x, 15-sep, 15)
+# The implied TPR and FPR given a threshold
+tpr = function(threshold, sep) pbeta(threshold, 15, 15-sep, lower.tail = F)
+fpr = function(threshold, sep) pbeta(threshold, 15-sep, 15, lower.tail = F)
+```
+
+[Приклад:]{.ex} Розподіл імовірностей для [негативний]{.hi-orange} і [позитивний]{.hi-purple} результатів.
+
+```{r, roc-ex1-d, echo = F}
+ggplot(
+  data = tibble(x = seq(0, 1, 0.001)),
+  aes(x = x)
+) +
+geom_area(stat = "function", fun = . %>% d_pos(., sep = 4), color = purple, fill = purple) +
+geom_area(stat = "function", fun = . %>% d_neg(., sep = 4), color = orange, fill = orange, alpha = 0.2) +
+geom_hline(yintercept = 0) +
+scale_x_continuous("Threshold for predicting 'Positive'", labels = scales::percent) +
+ylab("Density") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+Для будь-якого заданого [порогового значення]{.hi-pink}
+
+```{r, roc-ex1-threshold, echo = F}
+ggplot(
+  data = tibble(x = seq(0, 1, 0.001)),
+  aes(x = x)
+) +
+geom_area(stat = "function", fun = . %>% d_pos(., sep = 4), color = purple, fill = purple) +
+geom_area(stat = "function", fun = . %>% d_neg(., sep = 4), color = orange, fill = orange, alpha = 0.2) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0.4375, color = red_pink, size = 1.2) +
+scale_x_continuous("Threshold for predicting 'Positive'", labels = scales::percent) +
+ylab("Density") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+Для будь-якого заданого [порогового значення]{.hi-pink} ми отримуємо [false positives]{.hi-yellow}
+
+```{r, roc-ex1-threshold2, echo = F}
+ggplot(
+  data = tibble(x = seq(0, 1, 0.001)),
+  aes(x = x)
+) +
+geom_area(stat = "function", fun = . %>% d_pos(., sep = 4), color = purple, fill = purple) +
+geom_area(stat = "function", fun = . %>% d_neg(., sep = 4), color = orange, fill = orange, alpha = 0.2) +
+geom_area(
+  stat = "function", fun = . %>% d_neg(., sep = 4), color = yellow, fill = yellow, alpha = 0.8,
+  xlim = c(0.4375, 1)
+) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0.4375, color = red_pink, size = 1.2) +
+scale_x_continuous("Threshold for predicting 'Positive'", labels = scales::percent) +
+ylab("Density") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+Для будь-якого заданого [порогового значення]{.hi-pink} ми отримуємо false positives та [true positives]{.hi-yellow}
+
+```{r, roc-ex1-threshold3, echo = F}
+ggplot(
+  data = tibble(x = seq(0, 1, 0.001)),
+  aes(x = x)
+) +
+geom_area(
+  stat = "function", fun = . %>% d_pos(., sep = 4), color = purple, fill = purple,
+  xlim = c(0, 0.4375)
+) +
+geom_area(stat = "function", fun = . %>% d_neg(., sep = 4), color = orange, fill = orange, alpha = 0.2) +
+geom_area(
+  stat = "function", fun = . %>% d_pos(., sep = 4), color = yellow, fill = yellow, alpha = 0.8,
+  xlim = c(0.4375, 1)
+) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0.4375, color = red_pink, size = 1.2) +
+scale_x_continuous("Threshold for predicting 'Positive'", labels = scales::percent) +
+ylab("Density") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+```{r, roc-ex1-data, include = F}
+# Generate data
+roc1 = tibble(
+  tpr = seq(0, 1, 0.001) %>% tpr(., sep = 4),
+  fpr = seq(0, 1, 0.001) %>% fpr(., sep = 4)
+)
+```
+
+... рухаючись вздовж всіх можливих порогах генерує [ROC]{.hi-pink} ([AUC]{.hi-orange} ≈ `r roc1 %>% arrange(fpr) %>% mutate(dist = fpr - lag(fpr)) %>% transmute(new = tpr * dist) %$% new %>% sum(na.rm = T) %>% round(3)`).
+
+```{r, roc-ex1-roc, echo = F}
+# Plot
+ggplot(
+  data = roc1,
+  aes(x = fpr, y = tpr)
+) +
+geom_ribbon(
+  aes(ymin = 0, ymax = tpr),
+  fill = orange, alpha = 0.75
+) +
+geom_path(color = red_pink, size = 1) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_abline(intercept = 0, slope = 1, color = slate, linetype = "dotted", size = 0.5) +
+scale_x_continuous("False positive rate (FP/N)", labels = scales::percent) +
+scale_y_continuous("True positive rate (TP/P)", labels = scales::percent) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+Збільшення розриву між результатами [negative]{.hi-orange} і [positive]{.hi-purple}...
+
+```{r, roc-ex2-d, echo = F}
+ggplot(
+  data = tibble(x = seq(0, 1, 0.001)),
+  aes(x = x)
+) +
+geom_area(stat = "function", fun = . %>% d_pos(., sep = 8), color = purple, fill = purple) +
+geom_area(stat = "function", fun = . %>% d_neg(., sep = 8), color = orange, fill = orange, alpha = 0.2) +
+geom_hline(yintercept = 0) +
+scale_x_continuous("Threshold for predicting 'Positive'", labels = scales::percent) +
+ylab("Density") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+```{r, roc-ex2-data, include = F}
+# Generate data
+roc2 = tibble(
+  tpr = seq(0, 1, 0.001) %>% tpr(., sep = 8),
+  fpr = seq(0, 1, 0.001) %>% fpr(., sep = 8)
+)
+```
+
+... зменшує помилку (зміщує [ROC]{.hi-pink}) і збільшує [AUC]{.hi-orange} (≈ `r roc2 %>% arrange(fpr) %>% mutate(dist = fpr - lag(fpr)) %>% transmute(new = tpr * dist) %$% new %>% sum(na.rm = T) %>% round(3)`).
+
+```{r, roc-ex2-roc, echo = F}
+# Plot
+ggplot(
+  data = roc2,
+  aes(x = fpr, y = tpr)
+) +
+geom_ribbon(
+  aes(ymin = 0, ymax = tpr),
+  fill = orange, alpha = 0.75
+) +
+geom_path(color = red_pink, size = 1) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_abline(intercept = 0, slope = 1, color = slate, linetype = "dotted", size = 0.5) +
+scale_x_continuous("False positive rate (FP/N)", labels = scales::percent) +
+scale_y_continuous("True positive rate (TP/P)", labels = scales::percent) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+Подальше збільшення розриву між результатами [negative]{.hi-orange} і [positive]{.hi-purple}...
+
+```{r, roc-ex3-d, echo = F}
+ggplot(
+  data = tibble(x = seq(0, 1, 0.001)),
+  aes(x = x)
+) +
+geom_area(stat = "function", fun = . %>% d_pos(., sep = 10), color = purple, fill = purple) +
+geom_area(stat = "function", fun = . %>% d_neg(., sep = 10), color = orange, fill = orange, alpha = 0.2) +
+geom_hline(yintercept = 0) +
+scale_x_continuous("Threshold for predicting 'Positive'", labels = scales::percent) +
+ylab("Density") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+```{r, roc-ex3-data, include = F}
+# Generate data
+roc3 = tibble(
+  tpr = seq(0, 1, 0.001) %>% tpr(., sep = 10),
+  fpr = seq(0, 1, 0.001) %>% fpr(., sep = 10)
+)
+```
+
+... зменшує помилку (зміщує [ROC]{.hi-pink}) і збільшує [AUC]{.hi-orange} (≈ `r roc3 %>% arrange(fpr) %>% mutate(dist = fpr - lag(fpr)) %>% transmute(new = tpr * dist) %$% new %>% sum(na.rm = T) %>% round(3)`).
+
+```{r, roc-ex3-roc, echo = F}
+# Plot
+ggplot(
+  data = roc3,
+  aes(x = fpr, y = tpr)
+) +
+geom_ribbon(
+  aes(ymin = 0, ymax = tpr),
+  fill = orange, alpha = 0.75
+) +
+geom_path(color = red_pink, size = 1) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_abline(intercept = 0, slope = 1, color = slate, linetype = "dotted", size = 0.5) +
+scale_x_continuous("False positive rate (FP/N)", labels = scales::percent) +
+scale_y_continuous("True positive rate (TP/P)", labels = scales::percent) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+Невелика різниця («вгадування») між результатами [негативний]{.hi-orange} і [позитивний]{.hi-purple}...
+
+```{r, roc-ex4-d, echo = F}
+ggplot(
+  data = tibble(x = seq(0, 1, 0.001)),
+  aes(x = x)
+) +
+geom_area(stat = "function", fun = . %>% d_pos(., sep = 0.2), color = purple, fill = purple) +
+geom_area(stat = "function", fun = . %>% d_neg(., sep = 0.2), color = orange, fill = orange, alpha = 0.2) +
+geom_hline(yintercept = 0) +
+scale_x_continuous("Threshold for predicting 'Positive'", labels = scales::percent) +
+ylab("Density") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+```{r, roc-ex4-data, include = F}
+# Generate data
+roc4 = tibble(
+  tpr = seq(0, 1, 0.001) %>% tpr(., sep = 0.2),
+  fpr = seq(0, 1, 0.001) %>% fpr(., sep = 0.2)
+)
+```
+
+... збільшує помилку (зміщує [ROC]{.hi-pink}) і підштовхує [AUC]{.hi-orange} до 0,5 (тут ≈ `r roc4 %>% arrange(fpr) %>% mutate(dist = fpr - lag( fpr)) %>% transmute(new = tpr * dist) %$% new %>% sum(na.rm = T) %>% round(3)`).
+
+```{r, roc-ex4-roc, echo = F}
+# Plot
+ggplot(
+  data = roc4,
+  aes(x = fpr, y = tpr)
+) +
+geom_ribbon(
+  aes(ymin = 0, ymax = tpr),
+  fill = orange, alpha = 0.75
+) +
+geom_path(color = red_pink, size = 1) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_abline(intercept = 0, slope = 1, color = slate, linetype = "dotted", size = 0.5) +
+scale_x_continuous("False positive rate (FP/N)", labels = scales::percent) +
+scale_y_continuous("True positive rate (TP/P)", labels = scales::percent) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+Отримання результатів [negative]{.hi-orange} і [positive]{.hi-purple} у зворотному напрямку...
+
+```{r, roc-ex5-d, echo = F}
+ggplot(
+  data = tibble(x = seq(0, 1, 0.001)),
+  aes(x = x)
+) +
+geom_area(stat = "function", fun = . %>% d_pos(., sep = -10), color = purple, fill = purple) +
+geom_area(stat = "function", fun = . %>% d_neg(., sep = -10), color = orange, fill = orange, alpha = 0.2) +
+geom_hline(yintercept = 0) +
+scale_x_continuous("Threshold for predicting 'Positive'", labels = scales::percent) +
+ylab("Density") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+```{r, roc-ex5-data, include = F}
+# Generate data
+roc5 = tibble(
+  tpr = seq(0, 1, 0.001) %>% tpr(., sep = -10),
+  fpr = seq(0, 1, 0.001) %>% fpr(., sep = -10)
+)
+```
+
+... збільшує помилку (зміщує [ROC]{.hi-pink}) і штовхає [AUC]{.hi-orange} до 0 (тут ≈ `r roc5 %>% arrange(fpr) %>% mutate(dist = fpr - lag( fpr)) %>% transmute(new = tpr * dist) %$% new %>% sum(na.rm = T) %>% round(3)`).
+
+```{r, roc-ex5-roc, echo = F}
+# Plot
+ggplot(
+  data = roc5,
+  aes(x = fpr, y = tpr)
+) +
+geom_ribbon(
+  aes(ymin = 0, ymax = tpr),
+  fill = orange, alpha = 0.75
+) +
+geom_path(color = red_pink, size = 1) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_abline(intercept = 0, slope = 1, color = slate, linetype = "dotted", size = 0.5) +
+scale_x_continuous("False positive rate (FP/N)", labels = scales::percent) +
+scale_y_continuous("True positive rate (TP/P)", labels = scales::percent) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+## AUC в R
+
+Ви можете обчислити **AUC** у R за допомогою функції [`roc_auc()` з `yardstick`](https://yardstick.tidymodels.org/reference/roc_auc.html). Перегляньте документацію для прикладів.
+
+**Logistic elasticnet** `glmnet()` (для ridge , lasso та elasticnet) поширюється на logistic regression шляхом визначення аргументу `family` у `glmnet`, *тобто* ,
+
+```{r, eval = F}
+# Example of logistic regression with lasso
+logistic_lasso = glmnet(
+  y = y,
+  x = x,
+  family = "binomial",
+  alpha = 1,
+  lambda = best_lambda
+)
+```
+
+Ви також можете використовувати механізм `"glmnet"` для `logistic_reg()` в `parsnip`.
 
 # Дякую за увагу! {.unnumbered .unlisted}
 
@@ -609,6 +1222,3 @@ y_hat = as.numeric(p_hat >= 0.5)
 `r fa("linkedin")` [\@ihormiroshnychenko](https://www.linkedin.com/in/ihormiroshnychenko/)
 
 `r fa("house")` [aranaur.rbind.io](https://aranaur.rbind.io)
-
-
-
