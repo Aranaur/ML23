@@ -1,0 +1,1300 @@
+---
+title: "06 - Дерева рішень 🌲🌴🌳"
+subtitle: "Machine Learning"
+author: "Ігор Мірошниченко"
+date: today
+date-format: iso
+institute: КНЕУ::ІІТЕ
+crossref:
+  fig-title: Рис.     # (default is "Figure")
+  tbl-title: Таб.     # (default is "Table")
+format:
+  revealjs: 
+    
+    theme: [simple, custom.scss]
+    # footer: <https://t.me/araprof>
+    logo: img/logo.png
+    chalkboard: true
+    slide-number: true
+    toc: true
+    toc-title: ЗМІСТ
+    transition: fade
+    mouse-wheel: true
+    highlight-style: github
+    mainfont: metropolis
+    toc-depth: 1
+    fig-width: 9
+    fig-height: 5
+filters:
+  - line-highlight
+    
+knitr: 
+  opts_chunk: 
+    echo: true
+    warnings: false
+    message: false
+editor_options: 
+  chunk_output_type: console
+---
+```{r, setup, include = F}
+library(pacman)
+p_load(
+  ISLR,
+  broom, tidyverse,
+  ggplot2, ggthemes, ggforce, ggridges, cowplot, scales,
+  latex2exp, viridis, extrafont, gridExtra, plotly, ggformula,
+  DiagrammeR,
+  kableExtra, DT, huxtable,
+  data.table, dplyr, snakecase, janitor,
+  lubridate, knitr,
+  caret, tidymodels, rpart, rpart.plot, rattle,
+  here, magrittr, parallel, fontawesome
+)
+# Define colors
+red_pink   = "#e64173"
+turquoise  = "#20B2AA"
+orange     = "#FFA500"
+red        = "#fb6107"
+blue       = "#3b3b9a"
+green      = "#8bb174"
+grey_light = "grey70"
+grey_mid   = "grey50"
+grey_dark  = "grey20"
+purple     = "#6A5ACD"
+slate      = "#314f4f"
+```
+
+# Дерева рішень
+
+## Основи
+
+[Дерева рішень]{.attn}
+
+- розділяють **простір предиктора** (наш $\mathbf{X}$) на області
+- потім прогнозують найпоширеніше значення в області
+
+. . .
+
+[Дерева рішень]{.attn}
+
+1. Працюють як для [як класифікації, так і регресії]{.hi}
+
+. . .
+
+1. за своєю суттю є [нелінійними]{.hi}
+
+. . .
+
+1. є відносно [простими]{.hi} і [інтерпретованими]{.hi}
+
+. . .
+
+1. легко масштабувати на [дуже конкурентоспроможні ансамблеві методи]{.hi} (*багато* дерев)
+
+---
+
+```{r, data-default, include = F}
+# Load 'Defualt' data from 'ISLR'
+default_df = ISLR::Default %>% as_tibble()
+```
+
+[Приклад:]{.ex} **Просте дерево рішень**, що класифікує дефолт кредитної картки
+
+```{r, tree-graph, echo = F, cache = T}
+DiagrammeR::grViz("
+digraph {
+
+graph [layout = dot, overlap = false, fontsize = 14]
+
+node [shape = oval, fontname = 'Fira Sans', color = Gray95, style = filled]
+s1 [label = 'Bal. > 1,800']
+s2 [label = 'Bal. < 1,972']
+s3 [label = 'Inc. > 27K']
+
+node [shape = egg, fontname = 'Fira Sans', color = Purple, style = filled, fontcolor = White]
+l1 [label = 'No (98%)']
+l4 [label = 'No (69%)']
+
+node [shape = egg, fontname = 'Fira Sans', color = Orange, style = filled, fontcolor = White]
+l2 [label = 'Yes (76%)']
+l3 [label = 'Yes (59%)']
+
+edge [fontname = 'Fira Sans', color = Grey70]
+s1 -> l1 [label = 'F']
+s1 -> s2 [label = 'T']
+s2 -> s3 [label = 'T']
+s2 -> l2 [label = 'F']
+s3 -> l3 [label = 'T']
+s3 -> l4 [label = 'F']
+}
+")
+```
+
+---
+
+Давайте подивимося, як працює дерево
+
+---
+
+Давайте подивимося, як працює дерево (за замовчуванням: [Так]{.orange} *vs.* [Ні]{.purple}).
+
+```{r, partition-base, include = F, cache = T}
+gg_base = ggplot(
+  data = default_df,
+  aes(x = balance, y = income, color = default, alpha = default)
+) +
+geom_hline(yintercept = 0) +
+geom_vline(xintercept = 0) +
+geom_point(size = 2) +
+scale_y_continuous("Income", labels = dollar) +
+scale_x_continuous("Balance", labels = dollar) +
+scale_color_manual("Defaulted:", values = c(purple, orange), labels = c("No", "Yes")) +
+scale_alpha_manual("Defaulted:", values = c(0.1, 0.8), labels = c("No", "Yes")) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "none")
+```
+
+```{r, plot-raw, echo = F}
+gg_base
+```
+
+---
+
+[Перший розділ]{.hi-pink} дылить баланс у $1800 доларів США.
+
+```{r, plot-split1, echo = F, cache = T, dependson = c(-2)}
+# Add the first split (to existing figure)
+gg_base +
+annotate(
+  "segment",
+  x = 1800, xend = 1800, y = -Inf, yend = Inf,
+  color = red_pink, size = 1.2
+)
+```
+
+---
+
+[Другий розділ]{.hi-pink} ділить баланс на $1972 (*за умови балансу > \$1800*).
+
+```{r, plot-split2, echo = F, cache = T, dependson = c(-3)}
+gg_base +
+annotate(
+  "segment",
+  x = 1800, xend = 1800, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1972, xend = 1972, y = -Inf, yend = Inf,
+  color = red_pink, size = 1.2
+)
+```
+
+---
+
+[Третій розділ]{.hi-pink} ділить дохід у $27K **для** баллансу від \$1800 до \$1972 доларів.
+
+```{r, plot-split3, echo = F, cache = T, dependson = c(-4)}
+gg_base +
+annotate(
+  "segment",
+  x = 1800, xend = 1800, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1972, xend = 1972, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1972, y = 27e3, yend = 27e3,
+  color = red_pink, size = 1.2
+)
+```
+
+---
+
+Ці три розділи дають нам чотири **області**...
+
+```{r, plot-split3b, echo = F, cache = T, dependson = c(-5)}
+gg_base +
+annotate(
+  "segment",
+  x = 1800, xend = 1800, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1972, xend = 1972, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1972, y = 27e3, yend = 27e3,
+  linetype = "longdash"
+) +
+annotate("text",
+  x = 900, y = 37500, label = expression(R[1]),
+  size = 8, family = "Fira Sans Book"
+) +
+annotate("text",
+  x = 1886, y = 5.1e4, label = expression(R[2]),
+  size = 8, family = "Fira Sans Book"
+) +
+annotate("text",
+  x = 1886, y = 1e4, label = expression(R[3]),
+  size = 8, family = "Fira Sans Book"
+) +
+annotate("text",
+  x = 2336, y = 37500, label = expression(R[4]),
+  size = 8, family = "Fira Sans Book"
+)
+```
+
+---
+
+**Прогнози:** *наприклад*, використовуючи найпоширеніший клас області.
+
+```{r, plot-split3c, echo = F, cache = T, dependson = c(-6)}
+gg_base +
+annotate(
+  "rect",
+  xmin = 0, xmax = 1800, ymin = 0, ymax = Inf,
+  fill = purple, alpha = 0.3
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1800, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1972, xend = 1972, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1972, y = 27e3, yend = 27e3,
+  linetype = "longdash"
+)
+```
+
+---
+
+**Прогнози:** *наприклад*, використовуючи найпоширеніший клас області.
+
+```{r, plot-split3d, echo = F, cache = T, dependson = c(-7)}
+gg_base +
+annotate(
+  "rect",
+  xmin = 0, xmax = 1800, ymin = 0, ymax = Inf,
+  fill = purple, alpha = 0.3
+) +
+annotate(
+  "rect",
+  xmin = 1800, xmax = 1972, ymin = 27e3, ymax = Inf,
+  fill = orange, alpha = 0.3
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1800, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1972, xend = 1972, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1972, y = 27e3, yend = 27e3,
+  linetype = "longdash"
+)
+```
+
+---
+
+**Прогнози:** *наприклад*, використовуючи найпоширеніший клас області.
+
+```{r, plot-split3e, echo = F, cache = T, dependson = c(-8)}
+gg_base +
+annotate(
+  "rect",
+  xmin = 0, xmax = 1800, ymin = 0, ymax = Inf,
+  fill = purple, alpha = 0.3
+) +
+annotate(
+  "rect",
+  xmin = 1800, xmax = 1972, ymin = 27e3, ymax = Inf,
+  fill = orange, alpha = 0.3
+) +
+annotate(
+  "rect",
+  xmin = 1800, xmax = 1972, ymin = 0, ymax = 27e3,
+  fill = purple, alpha = 0.3
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1800, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1972, xend = 1972, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1972, y = 27e3, yend = 27e3,
+  linetype = "longdash"
+)
+```
+
+---
+
+**Прогнози:** *наприклад*, використовуючи найпоширеніший клас області.
+
+```{r, plot-split3f, echo = F, cache = T, dependson = c(-9)}
+gg_base +
+annotate(
+  "rect",
+  xmin = 0, xmax = 1800, ymin = 0, ymax = Inf,
+  fill = purple, alpha = 0.3
+) +
+annotate(
+  "rect",
+  xmin = 1800, xmax = 1972, ymin = 27e3, ymax = Inf,
+  fill = orange, alpha = 0.3
+) +
+annotate(
+  "rect",
+  xmin = 1800, xmax = 1972, ymin = 0, ymax = 27e3,
+  fill = purple, alpha = 0.3
+) +
+annotate(
+  "rect",
+  xmin = 1972, xmax = Inf, ymin = 0, ymax = Inf,
+  fill = orange, alpha = 0.3
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1800, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1972, xend = 1972, y = -Inf, yend = Inf,
+  linetype = "longdash"
+) +
+annotate(
+  "segment",
+  x = 1800, xend = 1972, y = 27e3, yend = 27e3,
+  linetype = "longdash"
+)
+```
+
+---
+
+[Області]{.hi-pink} відповідають [кінцевим вузлам]{.attn} (або [листям]{.attn}) дерева.
+
+```{r, tree-leaves, echo = F, cache = T}
+DiagrammeR::grViz("
+digraph {
+
+graph [layout = dot, overlap = false, fontsize = 14]
+
+node [shape = oval, fontname = 'Fira Sans', color = Gray95, style = filled]
+s1 [label = 'Bal. > 1,800']
+s2 [label = 'Bal. < 1,972']
+s3 [label = 'Inc. > 27K']
+
+node [shape = egg, fontname = 'Fira Sans', color = DeepPink, style = filled, fontcolor = White]
+l1 [label = 'No (98%)']
+l4 [label = 'No (69%)']
+
+node [shape = egg, fontname = 'Fira Sans', color = DeepPink, style = filled, fontcolor = White]
+l2 [label = 'Yes (76%)']
+l3 [label = 'Yes (59%)']
+
+edge [fontname = 'Fira Sans', color = Grey70]
+s1 -> l1 [label = 'F']
+s1 -> s2 [label = 'T']
+s2 -> s3 [label = 'T']
+s2 -> l2 [label = 'F']
+s3 -> l3 [label = 'T']
+s3 -> l4 [label = 'F']
+}
+")
+```
+
+---
+
+[Розділові лінії]{.hi-pink} графіка відповідають [внутрішнім вузлам]{.attn} дерева.
+
+```{r, tree-internal, echo = F, cache = T}
+DiagrammeR::grViz("
+digraph {
+
+graph [layout = dot, overlap = false, fontsize = 14]
+
+node [shape = oval, fontname = 'Fira Sans', color = DeepPink, style = filled, fontcolor = White]
+s1 [label = 'Bal. > 1,800']
+s2 [label = 'Bal. < 1,972']
+s3 [label = 'Inc. > 27K']
+
+node [shape = egg, fontname = 'Fira Sans', color = Grey95, style = filled, fontcolor = White]
+l1 [label = 'No (98%)']
+l4 [label = 'No (69%)']
+
+node [shape = egg, fontname = 'Fira Sans', color = Grey95, style = filled, fontcolor = White]
+l2 [label = 'Yes (76%)']
+l3 [label = 'Yes (59%)']
+
+edge [fontname = 'Fira Sans', color = Grey70]
+s1 -> l1 [label = 'F']
+s1 -> s2 [label = 'T']
+s2 -> s3 [label = 'T']
+s2 -> l2 [label = 'F']
+s3 -> l3 [label = 'T']
+s3 -> l4 [label = 'F']
+}
+")
+```
+
+---
+
+Сегменти, що з'єднують вузли всередині дерева, є його [гілками]{.attn}.
+
+```{r, tree-branches, echo = F, cache = T}
+DiagrammeR::grViz("
+digraph {
+
+graph [layout = dot, overlap = false, fontsize = 14]
+
+node [shape = oval, fontname = 'Fira Sans', color = Grey95, style = filled, fontcolor = White]
+s1 [label = 'Bal. > 1,800']
+s2 [label = 'Bal. < 1,972']
+s3 [label = 'Inc. > 27K']
+
+node [shape = egg, fontname = 'Fira Sans', color = Grey95, style = filled, fontcolor = White]
+l1 [label = 'No (98%)']
+l4 [label = 'No (69%)']
+
+node [shape = egg, fontname = 'Fira Sans', color = Grey95, style = filled, fontcolor = White]
+l2 [label = 'Yes (76%)']
+l3 [label = 'Yes (59%)']
+
+edge [fontname = 'Fira Sans', color = DeepPink]
+s1 -> l1 [label = 'F']
+s1 -> s2 [label = 'T']
+s2 -> s3 [label = 'T']
+s2 -> l2 [label = 'F']
+s3 -> l3 [label = 'T']
+s3 -> l4 [label = 'F']
+}
+")
+```
+
+---
+
+<br>
+<br>
+<br>
+Тепер ви знаєте анатомію дерева рішень.
+
+Але звідки беруться дерева — як ми навчаємо дерево?
+
+# Регресійні дерева
+
+## Регресійні дерева
+
+Ми почнемо з [регресійних дерев]{.attn}, _тобто_ дерев, які використовуються в задачах регресії.
+
+. . .
+
+Як ми бачили, завдання [вирощування дерева]{.hi} складається з двох основних кроків:
+
+1. **Розділити простір предикторів** на області $J$ (використовуючи предиктори $\mathbf{x}_1,\ldots,\mathbf{x}_p$)
+
+. . .
+
+1. **Зробіть прогноз**, використовуючи середній результат для області
+<br>Для області $R_j$ передбачте $\hat{y}_{R_j}$ де
+
+$$
+\begin{align}
+  \hat{y}_{R_j} = \frac{1}{n_j} \sum_{i\in R_j} y
+\end{align}
+$$
+
+---
+
+## Вирощування дерев
+
+Ми [вибираємо області для мінімізації RSS]{.hi} *серед усіх* $J$ [областей]{.note}, _тобто_,
+
+$$
+\begin{align}
+  \sum_{j=1}^{J} \left( y_i - \hat{y}_{R_j} \right)^2
+\end{align}
+$$
+
+. . .
+
+**Проблема:** Вивчення кожного можливого розділу обчислювально неможливо.
+
+. . .
+
+**Рішення:** алгоритм *зверху вниз, жадібний* під назвою [рекурсивне двійкове розбиття]{.attn}
+
+- [recursive]{.attn} починається з "найкращого" розділу, потім знаходить наступний "найкращий" розділ, ...
+- [binary]{.attn} кожне розбиття створює дві гілки — "так" і "ні"
+- [greedy]{.attn} краще розбиття, виходячи з наявних на кожному етапі даних, не зважаючи на можливі наслідки
+
+---
+
+## Вирощування дерев: вибір поділу
+
+[Нагадування]{.ex} Дерева регресії вибирають поділ, який мінімізує RSS.
+
+Щоб знайти цей поділ, нам потрібно
+
+1. [предиктор]{.purple}, $\color{#6A5ACD}{\mathbf{x}_j}$
+1. [cutoff]{.attn} $\color{#e64173}{s}$, який розділяє $\color{#6A5ACD}{\mathbf{x}_j}$ на дві частини: (1) $\color{#6A5ACD }{\mathbf{x}_j} < \color{#e64173}{s}$ і (2) $\color{#6A5ACD}{\mathbf{x}_j} \ge \color{#e64173}{s} $
+
+. . .
+
+Шукаючи в кожному з наших [предиктор]{.purple} $\color{#6A5ACD}{j}$ і всіх їхніх [cutoff]{.attn} $\color{#e64173}{s}$,
+<br>ми вибираємо комбінацію, яка **мінімізує RSS**.
+
+---
+
+## Приклад: розбиття
+
+[Приклад]{.ex} Розглянемо набір даних
+
+```{r, data-ex-split, echo = F}
+ex_df = tibble(
+  "i" = 1:3,
+  "pred." = c(0, 0, 0),
+  "y" = c(0, 8, 6),
+  "x1" = c(1, 3, 5),
+  "x2" = c(4, 2, 6)
+)
+ex_df %>%
+  hux() %>%
+  set_align(1:4, 1:5, "center") %>%
+  set_bold(1, 1:5, T) %>%
+  set_bold(2:4, 1:5, F) %>%
+  set_bottom_border(1, c(1,3:5), 1) %>%
+  set_text_color(1:4, 2, "white") %>% 
+  set_width(0.5)
+```
+
+. . .
+
+Лише з тьома спотсереженнями кожна змінна має лише два фактичних розбиття
+
+---
+
+## Приклад: розбиття
+
+Одне можливие розбиття: x~1~ на 2, що дає [(**1**) x~1~ < 2]{.purple} *vs.* [(**2**) xx~1~ ≥ 2]{.pink}
+
+```{r, ex-split1, echo = F}
+split1 = ex_df %>%
+  mutate("pred." = c(0, 7, 7)) %>%
+  hux() %>%
+  set_align(1:4, 1:5, "center") %>%
+  set_bold(1, 1:5, T) %>%
+  set_bottom_border(1, 1:5, 1) %>%
+  set_text_color(2, 1:4, purple) %>%
+  set_text_color(3:4, 1:4, red_pink)
+split1 %>%
+  set_text_color(1:4, 2, "white") %>%
+  set_bottom_border(1, 2, 0) %>% 
+  set_bold(2:4, 1:5, F) %>% 
+  set_width(0.5)
+```
+
+---
+
+## Приклад: розбиття
+
+Одне можливие розбиття: x~1~ на 2, що дає [(**1**) x~1~ < 2]{.purple} *vs.* [(**2**) x~1~ ≥ 2]{.pink}
+
+```{r, ex-split1b, echo = F}
+split1 = ex_df %>% mutate("pred." = c(0, 7, 7)) %>%
+  hux() %>%
+  set_align(1:4, 1:5, "center") %>%
+  set_bold(1, 1:5, T) %>%
+  set_bottom_border(1, 1:5, 1) %>%
+  set_text_color(2, 1:4, purple) %>%
+  set_text_color(3:4, 1:4, red_pink) %>%
+  set_bold(1:4, 2, T)
+split1 %>% set_width(0.5)
+```
+
+Таке розбиття дає RSS [0^2^]{.purple} + [1^2^]{.pink} + [(-1)^2^]{.pink} = 2.
+
+[Note~1~]{.note} Розщеплення x~1~ на 2 дає ті самі результати, що й 1,5, 2,5 — будь-що в (1, 3).
+<br>[Note~2~]{.note} Дерева часто ростуть, доки вони не досягнуть певної кількості спостережень у листі.
+
+------
+
+## Приклад: розбиття
+
+Альтернативне поділ: x~1~ на 4, що дає [(**1**) x~1~ < 4]{.purple} *vs.* [(**2**) x~1~ ≥ 4]{.pink}
+
+```{r, ex-split2, echo = F}
+ex_df %>% mutate("pred." = c(4, 4, 6)) %>%
+  hux() %>%
+  set_align(1:4, 1:5, "center") %>%
+  set_bold(1, 1:5, T) %>%
+  set_bottom_border(1, 1:5, 1) %>%
+  set_text_color(2:3, 1:4, purple) %>%
+  set_text_color(4, 1:4, red_pink) %>%
+  set_bold(1:4, 2, T) %>% 
+  set_width(0.5)
+```
+
+Таке розбиття дає RSS [(-4)^2^]{.purple} + [4^2^]{.pink} + [0^2^]{.pink} = 32.
+
+. . .
+
+*Раныше:* Розбиття x~1~ на 2 дало RSS = 2. [(*Набагато краще*)]{.grey-light}
+
+---
+
+## Приклад: розбиття
+
+Інший поділ: x~2~ на 3, що дає [(**1**) x~1~ < 3]{.purple} *vs.* [(**2**) x~1~ ≥ 3]{.pink}
+
+```{r, ex-split3, echo = F}
+ex_df %>% mutate("pred." = c(3, 8, 3)) %>%
+  hux() %>%
+  set_align(1:4, 1:5, "center") %>%
+  set_bold(1, 1:5, T) %>%
+  set_bottom_border(1, 1:5, 1) %>%
+  set_text_color(c(2,4), c(1:3,5), red_pink) %>%
+  set_text_color(3, c(1:3,5), purple) %>%
+  set_bold(1:4, 2, T) %>% 
+  set_width(0.5)
+```
+
+Таке розбиття дає RSS [(-3)^2^]{.pink} + [0^2^]{.purple} + [3^2^]{.pink} = 18.
+
+---
+
+## Приклад: розбиття
+
+Остаточний поділ: x~2~ на 5, що дає [(**1**) x~1~ < 5]{.purple} *vs.* [(**2**) x~1~ ≥ 5]{.pink}
+
+```{r, ex-split4, echo = F}
+ex_df %>% mutate("pred." = c(4, 4, 6)) %>%
+  hux() %>%
+  set_align(1:4, 1:5, "center") %>%
+  set_bold(1, 1:5, T) %>%
+  set_bottom_border(1, 1:5, 1) %>%
+  set_text_color(2:3, c(1:3,5), purple) %>%
+  set_text_color(4, c(1:3,5), red_pink) %>%
+  set_bold(1:4, 2, T) %>% 
+  set_width(0.5)
+```
+
+Таке розбиття дає RSS [(-4)^2^]{.pink} + [4^2^]{.purple} + [0^2^]{.pink} = 32.
+
+---
+
+## Приклад: розбиття
+
+Серед наших чотирьох можливих поділів (по дві змінні з двома поділами)
+
+- x~1~ з обмеженням 2: **RSS** = 2
+- x~1~ з обмеженням 4: **RSS** = 32
+- x~2~ з обмеженням 3: **RSS** = 18
+- x~2~ з обмеженням 5: **RSS** = 32
+
+Розбиття x~1~ на 2 генерує найнижчий RSS.
+
+---
+
+<br>
+<br>
+[Примітка:]{.note} Категориальні предиктори працюють точно так само.
+<br>Ми хочемо спробувати **усі можливі комбінації** категорій.
+
+[Ex:]{.ex} Для чотирирівневого категоріального предикатора (рівні: A, B, C, D)
+
+:::: {.columns}
+
+::: {.column}
+- Спліт 1: [A|B|C]{.pink} *vs.* [D]{.purple}
+- Спліт 2: [A|B|D]{.pink} *vs.* [C]{.purple}
+- Спліт 3: [A|C|D]{.pink} *vs.* [B]{.purple}
+- Спліт 4: [B|C|D]{.pink} *vs.* [A]{.purple}
+:::
+
+::: {.column}
+- Спліт 5: [A|B]{.pink} *vs.* [C|D]{.purple}
+- Спліт 6: [A|C]{.pink} *vs.* [B|D]{.purple}
+- Спліт 7: [A|D]{.pink} *vs.* [B|C]{.purple}
+:::
+
+::::
+
+нам потрібно буде спробувати 7 можливих розділень.
+
+---
+
+## Більше поділів
+
+Коли ми робимо наш спліт, ми продовжуємо розділяти,
+<br>**умовно** на області з наших попередніх поділів.
+
+Отже, якщо наше перше розбиття створює R~1~ і R~2~, то наше наступне розбиття
+<br>шукає в просторі предикторів лише в R~1~ або R~2~.
+
+. . .
+
+Дерево продовжує **рости, доки** воно не досягне певного порогу,
+<br>_наприклад_, щонайбільше 5 спостережень на кожному листі.
+
+---
+
+## Занадто багато поділів
+
+Можна мати занадто багато поділів
+
+[Q]{.qa} Чому?
+
+[A]{.qa} "Більше розділень" означає
+
+1. більше гнучкості (подумайте про компроміс bias-variance/overfitting)
+1. менша інтерпретативність (одна з переваг дерев)
+
+. . .
+
+[Q]{.qa} Отже, що ми можемо зробити?
+
+. . .
+
+[A]{.qa} Обрізайте свої дерева!
+
+---
+
+## Обрізання
+
+[Обрізання]{.attn} дозволяє нам "зтиснути" наші дерева до їх «найкращого вигляду».
+
+[Ідея:]{.note} Деякі області можуть збільшити [варіацію]{.hi} більше, ніж зменшити [зміщення]{.hi}.
+<br> Видаляючи ці області, ми виграємо в тестовій MSE.
+
+[Кандидати на скорочення:]{.note} області, які не дуже сильно **зменшують RSS**.
+
+. . .
+
+[Оновлена стратегія:]{.note} Вирощуйте великі дерева $T_0$, а потім обрізайте $T_0$ до оптимального [піддерева]{.attn}.
+
+. . .
+
+[Оновлена проблема:]{.note} Розгляд усіх можливих піддерев може коштувати дорого.
+
+---
+
+## Обрізання
+
+[Cost-complexity pruning]{.attn}[^🌲] пропонує рішення.
+
+[^🌲]: Також називається: *weakest-link pruning*.
+
+Так само, як ми робили з ласо, [cost-complexity pruning]{.attn} змушує дерево платити ціну (штраф), за складнысть.
+
+*Складність* тут визначається як кількість областей $|T|$.
+
+---
+
+## Обрізання
+
+Зокрема, [cost-complexity pruning]{.attn} додає штраф $\alpha |T|$ до RSS, _тобто_,
+
+$$
+\begin{align}
+  \sum_{m=1}^{|T|} \sum_{i:x\in R_m} \left( y_i - \hat{y}_{R_m} \right)^2 + \alpha |T|
+\end{align}
+$$
+
+Для будь-якого значення $\alpha (\ge 0)$ ми отримуємо піддерево $T\subset T_0$.
+
+. . .
+
+$\alpha = 0$ генерує $T_0$, але зі збільшенням $\alpha$ ми починаємо зрізати дерево.
+
+. . .
+
+Ми вибираємо $\alpha$ через перехресну перевірку.
+
+# Дерево класифікації
+
+## Дерево класифікації
+
+Класифікація за допомогою дерев дуже схожа на регресію.
+
+:::: {.columns}
+
+::: {.column}
+[Дерева регресії]{.hi-purple}
+
+- [Прогноз:]{.hi-slate} Середнє значення області
+- [Поділ:]{.hi-slate} Зменшення RSS
+- [Обрізання:]{.hi-slate} Штрафний RSS
+:::
+
+::: {.column}
+[Дерева класифікації]{.hi-pink}
+
+- [Прогноз:]{.hi-slate} Мода області
+- [Поділ:]{.hi-slate} Мін. Джині або ентропія[^🌲]
+- [Обрізання:]{.hi-slate} Штраф частоти помилок[^🌴]
+:::
+
+::::
+
+Додатковий нюанс для [дерева класифікації]{.attn}: ми зазвичай дбаємо про **пропорції класів у листках**, а не лише про остаточний прогноз.
+
+[^🌲]: Визначається на наступному слайді.
+[^🌴]: ...або індекс Джині або ентропія
+
+## Індекс Джині
+
+Нехай $\hat{p}_{mk}$ позначає частку спостережень у класі $k$ і область $m$.
+
+. . .
+
+[Індекс Джіні]{.attn} говорить нам про «чистоту» області
+
+$$
+\begin{align}
+   G = \sum_{k=1}^{K} \hat{p}_{mk} \left( 1 - \hat{p}_{mk} \right)
+\end{align}
+$$
+якщо область дуже однорідна, то індекс Джині буде малим.
+
+Однорідні області легше передбачити.
+<br>Зменшення індексу Джині дає змогу отримати більш однорідні регіони
+<br>∴ Ми хочемо мінімізувати індекс Джіні.
+
+---
+
+[**Джині як функція 'чистоти'**]{.pink}
+
+```{r, plot-gini, echo = F}
+# Calculate Gini
+g_dt = tibble(
+  p = seq(0, 1, 0.01),
+  G = p * (1-p)
+)
+# Plot it
+ggplot(
+  data = g_dt,
+  aes(x = p, y = G)
+) +
+geom_hline(yintercept = 0, size = 1/4) +
+geom_vline(xintercept = 0, size = 1/4) +
+geom_line(color = red_pink, size = 2) +
+scale_x_continuous("'Purity'") +
+scale_y_continuous("Gini") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+## Ентропія
+
+Нехай $\hat{p}_{mk}$ позначає частку спостережень у класі $k$ і регіоні $m$.
+
+[Ентропія]{.attn} також вимірює "чистоту" вузла/листка
+
+$$
+\begin{align}
+  D = - \sum_{k=1}^{K} \hat{p}_{mk} \log \left( \hat{p}_{mk} \right)
+\end{align}
+$$
+
+[Ентропія]{.attn} також мінімізується, коли значення $\hat{p}_{mk}$ близькі до 0 і 1.
+
+---
+
+[**Ентропія як функція 'чистоти'**]{.pink}
+
+```{r, plot-entropy, echo = F}
+# Calculate Gini
+e_dt = tibble(
+  p = seq(0.01, 1, 0.01),
+  G = - p * log(p)
+)
+# Plot it
+ggplot(
+  data = e_dt,
+  aes(x = p, y = G)
+) +
+geom_hline(yintercept = 0, size = 1/4) +
+geom_vline(xintercept = 0, size = 1/4) +
+geom_line(color = red_pink, size = 2) +
+scale_x_continuous("'Purity'") +
+scale_y_continuous("Entropy") +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book")
+```
+
+---
+
+## Раціональність
+
+[Q]{.qa} Чому ми використовуємо індекс Джіні або ентропію (*vs.* частота помилок)?
+
+. . .
+
+[A]{.qa} Частота помилок недостатньо чутлива, щоб виростити хороші дерева.
+<br> Індекс Джіні та ентропія говорять нам про **композицію** листа.
+
+. . .
+
+[Приклад]{.ex} Розглянемо два різних листка в трирівневій класифікації.
+
+:::: {.columns}
+
+::: {.column }
+**Листок 1**
+
+- **A:** 51, **B:** 49, **C:** 00
+- [Частота помилок:]{.hi-orange} 49%
+- [Індекс Джіні:]{.hi-purple} 0,4998
+- [Ентропія:]{.hi-pink} 0,6929
+:::
+
+::: {.column}
+**Листок 2**
+
+- **A:** 51, **B:** 25, **C:** 24
+- [Частота помилок:]{.hi-orange} 49%
+- [Індекс Джіні:]{.hi-purple} 0,6198
+- [Ентропія:]{.hi-pink} 1,0325
+:::
+
+::::
+
+[Індекс Джіні]{.hi-purple} та [ентропія]{.hi-pink} говорять нам про розподіл.
+
+# Побудова дерев рішень в R
+
+## Побудова дерев рішень в R
+
+Щоб навчити дерева рішень у R, ми можемо використовувати `parsnip`, який спирається на `rpart`.
+
+У `parsnip` ми використовуємо функцію `decision_tree()`.
+
+. . .
+
+Модель `decision_tree()` (з механізмом `rpart`) потребує чотирьох аргументів:
+
+- `mode`: `"regression"` або `"classification"`
+- `cost_complexity`: штраф за складність
+- `tree_depth`: *макс.* глибина дерева (макс. кількість розділень у «гілці»)
+- `min_n`: *мін.* к-ть спостережень для вузла, який потрібно розділити
+
+---
+
+```{r, train-decision-tree, cache = T}
+# CV split
+set.seed(12345)
+default_cv = default_df %>% vfold_cv(v = 5)
+# Дерево рішень
+default_tree = decision_tree(
+  mode = "classification",
+  cost_complexity = tune(),
+  tree_depth = tune(),
+  min_n = 10 # Довільний вибір «10»
+) %>% set_engine("rpart")
+# Визначити рецепт
+default_recipe = recipe(default ~ ., data = default_df)
+# Визначте робочий процес
+default_flow = workflow() %>%
+  add_model(default_tree) %>% add_recipe(default_recipe)
+# Налаштування!
+default_cv_fit = default_flow %>% tune_grid(
+  default_cv,
+  grid = expand_grid(
+    cost_complexity = seq(0, 0.15, by = 0.01),
+    tree_depth = c(1, 2, 5, 10),
+  ),
+  metrics = metric_set(accuracy, roc_auc)
+)
+```
+
+---
+
+**Точність, складність і глибина**
+
+```{r, plot-cv-cp, echo = F}
+ggplot(
+  data = default_cv_fit %>% collect_metrics() %>% filter(.metric == "accuracy"),
+  aes(
+    x = cost_complexity,
+    y = mean,
+    color = tree_depth %>% factor(levels = c(1,2,5,10), ordered = T),
+    shape = tree_depth %>% factor(levels = c(1,2,5,10), ordered = T)
+  )
+) +
+geom_line(size = 0.4) +
+geom_point(size = 3, alpha = 0.8) +
+scale_y_continuous("Accuracy") +
+scale_x_continuous("Cost complexity") +
+scale_color_viridis_d("Tree depth") +
+scale_shape_manual("Tree depth", values = c(1, 18, 15, 20)) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+**ROC AUC, складність і глибина**
+
+```{r, plot-cv-auc, echo = F}
+ggplot(
+  data = default_cv_fit %>% collect_metrics() %>% filter(.metric == "roc_auc"),
+  aes(
+    x = cost_complexity,
+    y = mean,
+    color = tree_depth %>% factor(levels = c(1,2,5,10), ordered = T),
+    shape = tree_depth %>% factor(levels = c(1,2,5,10), ordered = T)
+  )
+) +
+geom_line(size = 0.4) +
+geom_point(size = 4, alpha = 0.8) +
+scale_y_continuous("ROC AUC") +
+scale_x_continuous("Cost complexity") +
+scale_color_viridis_d("Tree depth") +
+scale_shape_manual("Tree depth", values = c(1, 18, 15, 20)) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom")
+```
+
+---
+
+[**Щоб побудувати дерево, вибране CV...**]{.slate}
+
+1\. [**Fit**]{.pink} обрана/найкраща модель.
+
+```{r, plot-tree-1}
+best_flow = 
+  default_flow %>% 
+  finalize_workflow(select_best(default_cv_fit, metric = "accuracy")) %>%
+  fit(data = default_df)
+```
+
+2\. [**Витягіть**]{.purple} підігнану модель, *наприклад,*, за допомогою `extract_fit_parsnip`.
+<br> [Старий/застарілий спосіб:]{.note} `pull_workflow_fit()`
+
+```{r, plot-tree-2}
+best_tree = best_flow %>% extract_fit_parsnip()
+```
+
+3\. [**Графік**]{.orange} дерева, *наприклад,*, за допомогою `rpart.plot()` з `rpart.plot`.
+
+```{r, plot-tree-3, eval = F}
+best_tree$fit %>% rpart.plot()
+```
+
+---
+
+```{r, plot-rpart-cv, echo = F}
+rpart.plot(
+  best_tree$fit,
+  extra = 104,
+  box.palette = "Oranges",
+  branch.lty = 3,
+  shadow.col = "gray",
+  nn = TRUE,
+  cex = 1.3
+)
+```
+
+---
+
+<br>
+<br>
+<br>
+<br>
+<br>
+
+Попереднє дерево має вартість складності 0,03 (і максимальну глибину 5).
+
+Ми можемо порівняти це «найкраще» дерево з менш обрізаним/оштрафованим деревом
+
+- `cost_complexity = 0,005`
+- `tree_depth = 5`
+
+---
+
+```{r, plot-tree_complex, echo = F}
+tree_complex = decision_tree(
+  mode = "classification",
+  cost_complexity = 0.005,
+  tree_depth = 5,
+  min_n = 10
+) %>% set_engine(
+  "rpart"
+) %>% fit(default ~ ., data = default_df)
+rpart.plot(
+  tree_complex$fit,
+  extra = 104,
+  box.palette = "Oranges",
+  branch.lty = 3,
+  shadow.col = "gray",
+  nn = TRUE,
+  cex = 1.2
+)
+```
+
+---
+
+<br>
+<br>
+<br>
+<br>
+<br>
+
+Що, якщо ми залишимо складність вартості постійною, але збільшимо макс. глибина?
+
+- `cost_complexity = 0,005`
+- `tree_depth = 10` (збільшено з `5`)
+
+---
+
+```{r, plot-tree_complexer, echo = F}
+tree_complexer = decision_tree(
+  mode = "classification",
+  cost_complexity = 0.005,
+  tree_depth = 10,
+  min_n = 10
+) %>% set_engine(
+  "rpart"
+) %>% fit(default ~ ., data = default_df)
+rpart.plot(
+  tree_complexer$fit,
+  extra = 104,
+  box.palette = "Oranges",
+  branch.lty = 3,
+  shadow.col = "gray",
+  nn = TRUE,
+  cex = 1.2
+)
+```
+
+---
+
+<br>
+<br>
+<br>
+<br>
+<br>
+
+Що, якщо ми збільшимо константу складності?
+
+- `cost_complexity = 0,1` (збільшено з `0,005`)
+- `tree_depth = 10`
+
+---
+
+```{r, plot-tree_simple, echo = F}
+tree_simple = decision_tree(
+  mode = "classification",
+  cost_complexity = 0.1,
+  tree_depth = 10,
+  min_n = 10
+) %>% set_engine(
+  "rpart"
+) %>% fit(default ~ ., data = default_df)
+rpart.plot(
+  tree_simple$fit,
+  extra = 104,
+  box.palette = "Oranges",
+  branch.lty = 3,
+  shadow.col = "gray",
+  nn = TRUE,
+  cex = 1.2
+)
+```
+
+---
+
+<br>
+<br>
+<br>
+
+[Q]{.qa} Як дерева порівнюються з лінійними моделями?
+
+. . .
+
+[A]{.tran} Це залежить від того, наскільки лінійна істині значення.
+
+---
+
+**Лінійна межа:** дерева намагаються відтворити лінію.
+
+```{r, fig-compare-linear, echo = F}
+knitr::include_graphics("img/compare-linear.png")
+```
+
+---
+
+**Нелінійна межа:** дерева легко повторюють нелінійну межу.
+
+```{r, fig-compare-nonlinear, echo = F}
+knitr::include_graphics("img/compare-nonlinear.png")
+```
+
+# Переваги та недоліки
+
+## Переваги та недоліки
+
+Як і в будь-якому іншому методі, дерева рішень мають компроміси.
+
+:::: {.columns}
+
+::: {.column}
+[**Сильні сторони**]{.purple}
+<br>[**+** Легко пояснюється/інтерпретується
+<br>**+** Включає кілька графічних параметрів
+<br>**+** Дзеркало прийняття рішень людиною?
+<br>**+** Працють з категор та числ. змін[^🌳].]{.purple}
+:::
+
+::: {.column}
+[**Слабкі сторони**
+<br>**-** Інші методи можуть бути кращі
+<br>**-** Боротьба з лінійністю
+<br>**-** Може бути дуже "не робастими"]{.pink}
+:::
+
+::::
+
+[Не робасті:]{.attn} Невеликі зміни даних можуть спричинити значні зміни в нашому дереві.
+
+[^🌳]: Не має потреби створювати фіктивні змінні
+
+# Дякую за увагу! {.unnumbered .unlisted}
+
+<br>
+<br>
+
+`r fa("telegram")` [Data Mirosh](https://t.me/araprof)
+
+`r fa("github")` [\@aranaur](https://github.com/Aranaur)
+
+`r fa("envelope")` ihor.miroshnychenko\@kneu.ua
+
+`r fa("linkedin")` [\@ihormiroshnychenko](https://www.linkedin.com/in/ihormiroshnychenko/)
+
+`r fa("house")` [aranaur.rbind.io](https://aranaur.rbind.io)
