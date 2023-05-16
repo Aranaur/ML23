@@ -1,0 +1,1785 @@
+---
+title: "07 - Ансамблі 🌲[🌲]{.smallest}🌲[🎄]{.smallest}🌲"
+subtitle: "Machine Learning"
+author: "Ігор Мірошниченко"
+date: today
+date-format: iso
+institute: КНЕУ::ІІТЕ
+crossref:
+  fig-title: Рис.     # (default is "Figure")
+  tbl-title: Таб.     # (default is "Table")
+format:
+  revealjs: 
+    
+    theme: [simple, custom.scss]
+    # footer: <https://t.me/araprof>
+    logo: img/logo.png
+    chalkboard: true
+    slide-number: true
+    toc: true
+    toc-title: ЗМІСТ
+    transition: fade
+    mouse-wheel: true
+    highlight-style: github
+    mainfont: metropolis
+    toc-depth: 1
+    fig-width: 9
+    fig-height: 5
+filters:
+  - line-highlight
+    
+knitr: 
+  opts_chunk: 
+    echo: true
+    warnings: false
+    message: false
+editor_options: 
+  chunk_output_type: console
+---
+```{r, setup, include = F}
+library(pacman)
+p_load(
+  ISLR,
+  broom, tidyverse,
+  ggplot2, ggthemes, ggforce, ggridges, cowplot, scales, rayshader,
+  latex2exp, viridis, extrafont, gridExtra, plotly, ggformula,
+  DiagrammeR,
+  kableExtra, DT, huxtable,
+  data.table, dplyr, snakecase, janitor,
+  lubridate, knitr, gbm,
+  caret, tidymodels, baguette, rpart, rpart.plot, rattle,
+  here, magrittr, parallel, furrr, future.apply, fontawesome
+)
+# Define colors
+red_pink   = "#e64173"
+turquoise  = "#20B2AA"
+orange     = "#FFA500"
+red        = "#fb6107"
+blue       = "#3b3b9a"
+green      = "#8bb174"
+grey_light = "grey70"
+grey_mid   = "grey50"
+grey_dark  = "grey20"
+purple     = "#6A5ACD"
+slate      = "#314f4f"
+```
+
+# Ансамблеві методи
+
+## Основи
+
+Замість того, щоб зосереджуватися на навчанні високоточної **однієї** моделі, [ансамблеві методи]{.attn} поєднують **багато** моделей низької точності в *мета-модель*.
+
+. . .
+
+Три поширені методи для **комбінування окремих дерев**
+
+1. [Bagging]{.attn}
+2. [Random forests]{.attn}
+3. [Boosting]{.attn}
+
+. . .
+
+**Чому?** Хоча окремі дерева можуть бути дуже різними та неточними,
+Комбінація дерев часто досить стабільна і точна.
+
+# Bagging
+
+## Bagging
+
+[Bagging]{.attn} створює додаткові зразки через [бутсрап]{.hi}.
+
+. . .
+
+[Q]{.qa} Як допомагає бутсрап?
+
+. . .
+
+[A]{.qa} Окремі дерева рішень страждають від варіативності (*non-robust*).
+
+. . .
+
+Ця *неробастість* означає, що дерева можуть *сильно* змінюватись в залежності ві того, які спостереження включені/виключені.
+
+. . .
+
+По суті, ми використовуємо багато «симуляцій» замість одного набору даних[^31]
+
+[^31]: Пам'ятайте, що дисперсія оцінювача зазвичай зменшується зі збільшенням розміру вибірки.
+
+---
+
+## Bagging
+
+[Bootstrap aggregation]{.attn} (bagging) зменшує цей тип мінливості.
+
+1. Створіть $B$ зразків початкові вибірки з поверненням. 
+2. Навчіть оцінювач (дерево) $\color{#6A5ACD}{\mathop{\hat{f^b}}(x)}$ на кожній із вибірок $B$
+3. Об'єднайте ваші бустрап моделі $B$:
+
+$$
+\begin{align}
+  \color{#e64173}{\mathop{\hat{f}_{\text{bag}}}(x)} = \dfrac{1}{B}\sum_{b=1}^{B}\color{#6A5ACD}{\mathop{\hat{f^b}}(x)}
+\end{align}
+$$
+
+Ця сукупна модель $\color{#e64173}{\mathop{\hat{f}_{\text{bag}}}(x)}$ є вашою остаточною моделлю.
+
+---
+
+## Bagging
+
+Коли ми застосовуємо баггінг до дерев рішень,
+
+- ми зазвичай [нарощуємо глибину дерева і не обрізаємо]{.hi-pink}
+
+- для [регресії]{.hi-purple} ми [усереднюємо]{.hi-purple} по регіонах дерев $B$
+
+- для [класифікація]{.hi-purple} ми маємо більше варіантів, але часто беремо [більшість]{.hi-purple}
+
+. . .
+
+[Окремі]{.hi-pink} (необрізані) дерева будуть дуже [гнучкими]{.hi-pink} і [зашумленими]{.hi-pink},
+<br>але їх [узагальнення]{.hi-purple} буде досить [стабільним]{.hi-purple}.
+
+. . .
+
+Кількість дерев $B$, як правило, не є критичною для бєггінгу
+<br> $B=100$ в більшості випадків є достатнім.
+
+---
+
+## Out-of-bag error estimation
+
+Бєггінг також пропонує зручний метод оцінки ефективності.
+
+. . .
+
+Для будь-якої початкової вибірки ми пропускаємо ~n/3 спостережень.
+
+[Out-of-bag (OOB) error estimation]{.attn} оцінює частоту помилок тесту, використовуючи спостереження **випадково пропущених** з кожного початкового зразка.
+
+. . .
+
+Для кожного спостереження $i$:
+
+1. Знайти всі зразки $S_i$, в яких $i$ було пропущено у навчальній вибірці
+2. Узагальнюєте прогнози $|S_i|$ $\color{#6A5ACD}{\mathop{\hat{f^b}}(x_i)}$, _наприклад_, використовуючи їхнє середнє або моду
+3. Обчисліть похибку, _наприклад_, $y_i - \mathop{\hat{f}_{i,\text{OOB},i}}(x_i)$
+
+---
+
+## Out-of-bag error estimation
+
+Коли $B$ достатньо великий, частота помилок OOB буде дуже близькою до LOOCV (Leave-One-Out Cross-Validation).
+
+. . .
+
+[Q]{.qa} Навіщо використовувати коефіцієнт помилок OOB?
+
+. . .
+
+[A]{.qa} Коли $B$ і $n$ великі, перехресна перевірка — з будь-якою кількістю згорток — може стати досить затратною для обчислень.
+
+---
+
+<br>
+<br>
+<br>
+<br>
+
+Ось інструмент для пошуку моделей `parsnip`:
+
+>[https://www.tidymodels.org/find/parsnip/](https://www.tidymodels.org/find/parsnip/)
+
+---
+
+## Bagging в R
+
+Ми можемо використовувати `tidymodels` плюс пакет `baguette` для бєггінгу дерев.
+
+:::: {.columns}
+
+::: {.column width="60%"}
+**Функція:** `bag_tree()`
+
+- "Визначає" модель для `parsnip`.
+:::
+
+::: {.column width="40%"}
+```{r, eval = F}
+# Train a bagged tree model
+bag_tree(
+  mode = "classification",
+  cost_complexity = 0,
+  tree_depth = NULL,
+  min_n = 2,
+  class_cost = NULL
+)
+```
+:::
+
+::::
+
+---
+
+## Bagging в R
+
+Ми можемо використовувати `tidymodels` плюс пакет `baguette` для бєггінгу дерев.
+
+:::: {.columns}
+
+::: {.column width="60%"}
+**Функція:** `bag_tree()`
+
+- "Визначає" модель для `parsnip`.
+- `mode`: 'class.', 'reg.', або unknown
+:::
+
+::: {.column width="40%"}
+```{r}
+#| eval: false
+#| code-line-numbers: '3'
+
+# Train a bagged tree model
+bag_tree(
+  mode = "classification",
+  cost_complexity = 0,
+  tree_depth = NULL,
+  min_n = 2,
+  class_cost = NULL
+)
+```
+:::
+
+::::
+
+---
+
+## Bagging в R
+
+Ми можемо використовувати `tidymodels` плюс пакет `baguette` для бєггінгу дерев.
+
+:::: {.columns}
+
+::: {.column width="60%"}
+**Функція:** `bag_tree()`
+
+- "Визначає" модель для `parsnip`.
+- `mode`: 'class.', 'reg.', або unknown
+- `cost_complexity`: штраф за складність моделі (`Cp`)
+:::
+
+::: {.column width="40%"}
+```{r}
+#| eval: false
+#| code-line-numbers: '4'
+
+# Train a bagged tree model
+bag_tree(
+  mode = "classification",
+  cost_complexity = 0,
+  tree_depth = NULL,
+  min_n = 2,
+  class_cost = NULL
+)
+```
+:::
+
+::::
+
+---
+
+## Bagging в R
+
+Ми можемо використовувати `tidymodels` плюс пакет `baguette` для бєггінгу дерев.
+
+:::: {.columns}
+
+::: {.column width="60%"}
+**Функція:** `bag_tree()`
+
+- "Визначає" модель для `parsnip`.
+- `mode`: 'class.', 'reg.', або unknown
+- `cost_complexity`: штраф за складність моделі (`Cp`)
+- `tree_depth`: макс. глибина дерева
+:::
+
+::: {.column width="40%"}
+```{r}
+#| eval: false
+#| code-line-numbers: '5'
+
+# Train a bagged tree model
+bag_tree(
+  mode = "classification",
+  cost_complexity = 0,
+  tree_depth = NULL,
+  min_n = 2,
+  class_cost = NULL
+)
+```
+:::
+
+::::
+
+---
+
+## Bagging в R
+
+Ми можемо використовувати `tidymodels` плюс пакет `baguette` для бєггінгу дерев.
+
+:::: {.columns}
+
+::: {.column width="60%"}
+**Функція:** `bag_tree()`
+
+- "Визначає" модель для `parsnip`.
+- `mode`: 'class.', 'reg.', або unknown
+- `cost_complexity`: штраф за складність моделі (`Cp`)
+- `tree_depth`: макс. глибина дерева
+- `min_n`: мін. к-ть спостереж. для поділу
+:::
+
+::: {.column width="40%"}
+```{r}
+#| eval: false
+#| code-line-numbers: '6'
+
+# Train a bagged tree model
+bag_tree(
+  mode = "classification",
+  cost_complexity = 0,
+  tree_depth = NULL,
+  min_n = 2,
+  class_cost = NULL
+)
+```
+:::
+
+::::
+
+---
+
+## Bagging в R
+
+Ми можемо використовувати `tidymodels` плюс пакет `baguette` для бєггінгу дерев.
+
+:::: {.columns}
+
+::: {.column width="60%"}
+**Функція:** `bag_tree()`
+
+- "Визначає" модель для `parsnip`.
+- `mode`: 'class.', 'reg.', або unknown
+- `cost_complexity`: штраф за складність моделі (`Cp`)
+- `tree_depth`: макс. глибина дерева
+- `min_n`: мін. к-ть спостереж. для поділу
+- `class_cost`: збільшення [вартості]{.note} мінорного класу
+:::
+
+::: {.column width="40%"}
+```{r}
+#| eval: false
+#| code-line-numbers: '7'
+
+# Train a bagged tree model
+bag_tree(
+  mode = "classification",
+  cost_complexity = 0,
+  tree_depth = NULL,
+  min_n = 2,
+  class_cost = NULL
+)
+```
+:::
+
+::::
+
+---
+
+## Bagging в R
+
+Ми можемо використовувати `tidymodels` плюс пакет `baguette` для бєггінгу дерев.
+
+:::: {.columns}
+
+::: {.column width="60%"}
+**Функція:** `bag_tree()`
+
+- "Визначає" модель для `parsnip`.
+- `mode`: 'class.', 'reg.', або unknown
+- `cost_complexity`: штраф за складність моделі (`Cp`)
+- `tree_depth`: макс. глибина дерева
+- `min_n`: мін. к-ть спостереж. для поділу
+- `class_cost`: збільшення [вартості]{.note} мінорного класу
+- `rpart` є движком за замовчуванням
+:::
+
+::: {.column width="40%"}
+```{r}
+#| eval: false
+#| code-line-numbers: '9'
+
+# Train a bagged tree model
+bag_tree(
+  mode = "classification",
+  cost_complexity = 0,
+  tree_depth = NULL,
+  min_n = 2,
+  class_cost = NULL
+) %>% set_engine(
+  engine = "rpart",
+  times = 100
+)
+```
+:::
+
+::::
+
+---
+
+## Bagging в R
+
+Ми можемо використовувати `tidymodels` плюс пакет `baguette` для бєггінгу дерев.
+
+:::: {.columns}
+
+::: {.column width="60%"}
+**Функція:** `bag_tree()`
+
+- "Визначає" модель для `parsnip`.
+- `mode`: 'class.', 'reg.', або unknown
+- `cost_complexity`: штраф за складність моделі (`Cp`)
+- `tree_depth`: макс. глибина дерева
+- `min_n`: мін. к-ть спостереж. для поділу
+- `class_cost`: збільшення [вартості]{.note} мінорного класу
+- `rpart` є движком за замовчуванням
+- `times`: кількість дерев
+:::
+
+::: {.column width="40%"}
+```{r}
+#| eval: false
+#| code-line-numbers: '10'
+
+# Train a bagged tree model
+bag_tree(
+  mode = "classification",
+  cost_complexity = 0,
+  tree_depth = NULL,
+  min_n = 2,
+  class_cost = NULL
+) %>% set_engine(
+  engine = "rpart",
+  times = 100
+)
+```
+:::
+
+::::
+
+---
+
+## Приклад: Bagging в R
+
+```{r, load-data-heart, include = F, cache = T}
+# Read data
+heart_df <- read_csv("Heart.csv") %>%
+  dplyr::select(-1) %>%
+  rename(HeartDisease = AHD) %>%
+  clean_names()
+# Impute missing values
+heart_recipe = recipe(heart_disease ~ ., data = heart_df) %>% 
+  step_impute_median(all_predictors() & all_numeric()) %>% 
+  step_impute_mode(all_predictors() & all_nominal())
+heart_df = heart_recipe %>% prep() %>% juice()
+```
+
+:::: {.columns}
+
+::: {.column}
+<br>OOB-based error
+```{r, ex-bag-oob, cache = T, dependson = "load-data-heart"}
+#| code-line-numbers: '11'
+
+# Set the seed
+set.seed(12345)
+# Train the bagged trees
+heart_bag = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "treebag",
+  nbagg = 100,
+  keepX = T,
+  trControl = trainControl(
+    method = "oob"
+  )
+)
+```
+:::
+
+::: {.column}
+<br>CV-based error
+```{r, ex-bag-cv, eval = F}
+#| code-line-numbers: '11,12'
+
+# Set the seed
+set.seed(12345)
+# Train the bagged trees
+heart_bag_cv = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "treebag",
+  nbagg = 100,
+  keepX = T,
+  trControl = trainControl(
+    method = "cv",
+    number = 5
+  )
+)
+```
+:::
+
+::::
+
+---
+
+```{r, sim-bag-size, cache = T}
+# Set the seed
+set.seed(12345)
+
+plan(multisession)
+# Train the bagged trees
+bag_oob = future_map_dfr(
+  .x = 2:300,
+  .f = function(n) {
+    train(
+      heart_disease ~ .,
+      data = heart_df,
+      method = "treebag",
+      nbagg = n,
+      keepX = T,
+      trControl = trainControl(
+        method = "oob"
+      )
+    )$results$Accuracy %>%
+    data.frame(accuracy = ., n_trees = n)
+  }
+)
+# Train the bagged trees
+bag_cv <- future_map_dfr(
+  .x = 2:300,
+  .f = function(n) {
+    train(
+      heart_disease ~ .,
+      data = heart_df,
+      method = "treebag",
+      nbagg = n,
+      keepX = T,
+      trControl = trainControl(
+        method = "cv",
+        number = 5
+      )
+    )$results$Accuracy %>%
+    data.frame(accuracy = ., n_trees = n)
+  }
+)
+```
+
+---
+
+**Bagging та кількість дерев**
+
+```{r, plot-bag, echo = F, cache = T}
+ggplot(
+  data = bind_rows(
+    bag_oob %>% mutate(type = "Bagged, OOB"),
+    bag_cv %>% mutate(type = "Bagged, CV")
+  ),
+  aes(x = n_trees, y = accuracy, color = type)
+) +
+geom_line() +
+scale_y_continuous("Accuracy", labels = scales::percent) +
+scale_x_continuous("Number of trees", labels = scales::comma) +
+scale_color_manual("[Method, Estimate]", values = c(red_pink, purple)) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "bottom") +
+coord_cartesian(ylim = c(0.60, 0.90))
+```
+
+---
+
+<br>
+<br>
+<br>
+<br>
+<br>
+На жаль, ця комбінація `rpart`/`baguette`/`parsnip`/`yardstick` не пропонує ([наразі](https://github.com/tidymodels/baguette/issues/33)) показники на основі OOB . 😞
+
+---
+
+<br>
+<br>
+<br>
+<br>
+<br>
+Ми *можемо* ["обдурити"](https://www.sds.pub/bagged-trees.html) випадкові ліси (`ranger`) у виконанні OOB для Bagging дерев.
+
+Але спочатку нам потрібно дізнатися про випадкові ліси...
+
+---
+
+<br>
+<br>
+<br>
+<br>
+... і перед *цим*, давайте коротко поговоримо про впливовість змінних.
+
+# Впливовість змінних
+
+## Впливовість змінних
+
+У той час як ансамблеві методи, як правило, [покращують ефективність прогнозування]{.hi}, вони також мають тенденцію [знижувати інтерпретованість]{.hi}.
+
+. . .
+
+Ми можемо проілюструвати [важливість змінних]{.attn}, враховуючи зменшення показників ефективності моделі (RSS, Gini, ентропія тощо)[^32]
+
+[^32]: Ця ідея стосується не лише bagging/ансамблів, а й окремих дерев.
+
+---
+
+У випадку `"rpart"` bagged дерев...
+
+```{r, tidy-bag-0, eval = T, include = F, cache = T}
+# Read data
+heart_df = read_csv("Heart.csv") %>%
+    dplyr::select(-1) %>%
+  rename(HeartDisease = AHD) %>%
+  clean_names()
+```
+
+```{r, tidy-bag-1, eval = T, cache = T, dependson = -1}
+# Recipe to clean data (impute NAs)
+heart_recipe = recipe(heart_disease ~ ., data = heart_df) %>% 
+  step_impute_median(all_predictors() & all_numeric()) %>% 
+  step_impute_mode(all_predictors() & all_nominal())
+# Define the bagged tree model
+heart_bag = bag_tree(
+  mode = "classification",
+  cost_complexity = 0,
+  tree_depth = NULL,
+  min_n = 2,
+  class_cost = NULL
+) %>% set_engine(
+  engine = "rpart",
+  times = 100
+)
+# Define workflow
+heart_bag_wf = workflow() %>% 
+  add_model(heart_bag) %>% 
+  add_recipe(heart_recipe)
+# Fit/assess with CV
+heart_bag_fit = heart_bag_wf %>% fit(heart_df)
+```
+
+---
+
+... оцінений об'єкт автоматично включає змінну важливість.
+
+```{r, tidy-bag-imp, echo = F}
+# Variable importance
+heart_bag_fit %>% extract_fit_parsnip() %$% fit
+```
+
+---
+
+[Важливість змінних]{.hi-pink} з нашої bagged tree model.
+
+```{r, ex-var-importance, include = F, cache = T, dependson = "ex-bag-oob"}
+# Get importance
+imp_df = heart_bag_fit %>% extract_fit_parsnip() %$% fit %>% var_imp()
+# Standardize importance
+imp_df %<>% mutate(
+  importance = value - min(value),
+  importance = 100 * importance / max(importance)
+)
+```
+
+```{r, plot-var-importance, echo = F, dependson = -3}
+# Plot importance
+ggplot(
+  data = imp_df,
+  aes(x = reorder(term, -importance), y = importance)
+) +
+geom_col(fill = red_pink) +
+geom_hline(yintercept = 0) +
+xlab("Variable") +
+ylab("Importance (scaled [0,100])") +
+# scale_fill_viridis_c(option = "magma", direction = -1) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "none") +
+coord_flip()
+```
+
+---
+
+## Bagging
+
+У Bagging є ще один недолік...
+
+Якщо одна змінна домінує над іншими змінними, [дерева будуть дуже корельованими]{.hi}.
+
+. . .
+
+Якщо дерева дуже корельовані, то bagging втрачає свою перевагу.
+
+. . .
+
+[Рішення]{.note} Ми повинні зробити дерева менш корельованими.
+
+# Random forests
+
+## Random forests
+
+[Випадкові ліси]{.attn} покращують bagged trees шляхом *декореляції* дерев.
+
+. . .
+
+Щоб декорелювати дерева, [випадковий ліс]{.attn} розглядає лише [випадкову підмножину]{.pink} $\color{#e64173}{m\enspace (\approx\sqrt{p})}$ [предикторів]{.pink} при виконанні кожного розбиття (для кожного дерева).
+
+. . .
+
+Обмеження змінних, які наше дерево бачить при заданому розділенні:
+
+. . .
+
+- не дозволяє деревам постійно використовувати одні і ті ж змінні,
+
+. . .
+
+- збільшує різноманітність дерев у нашому лісі,
+
+. . .
+
+- потенційно зменшує дисперсію наших оцінок.
+
+. . .
+
+Якщо наші прогнози дуже корельовані, ми можемо захотіти зменшити $m$.
+
+---
+
+## Random forests
+
+Таким чином, випадкові ліси вводять *два виміри випадкової варіації*
+
+1. *бутсрап вибірка*
+
+2. $m$ *випадково вибрані предиктори* (для розбиття)
+
+Все інше про випадкові ліси працює так само, як і з bagging
+
+---
+
+## Random forests в R
+
+У вас є кілька [варіантів](http://topepo.github.io/caret/train-models-by-tag.html#Random_Forest) для навчання випадкових лісів за допомогою `tidymodels`.
+<br>_Наприклад_, `ranger`, `randomForest`, `spark`.
+
+`rand_forest()` отримує доступ до кожного з цих пакетів через їх *двигуни*.
+
+. . .
+
+- Механізм за замовчуванням — «ranger» (пакет [`ranger`](https://cran.r-project.org/web/packages/ranger/index.html)).
+
+. . .
+
+- Аргумент `mtry` дає $m$, кількість предикторів при кожному розділенні.
+
+. . .
+
+Ви вже бачили інші гіперпараметри для `ranger`:
+
+- `trees` кількість дерев у випадковому лісі
+- `min_n` мін. к-ть спостережень
+
+---
+
+## Random forests в R
+
+Навчання випадкового лісу в R за допомогою `tidymodels`...
+
+:::: {.columns}
+
+::: {.column}
+... і `ranger`
+:::
+
+::: {.column}
+```{r, ex-tidy-ranger, cache = T}
+# Define the random forest
+heart_rf = rand_forest(
+  mode = "classification",
+  mtry = 3,
+  trees = 100,
+  min_n = 2
+) %>% set_engine(
+  engine = "ranger",
+  splitrule = "gini"
+)
+```
+:::
+
+::::
+
+---
+
+## Random forests в R
+
+Навчання випадкового лісу в R за допомогою `tidymodels`...
+
+:::: {.columns}
+
+::: {.column}
+... і `ranger`
+
+- Тип: Класифікація
+:::
+
+::: {.column}
+```{r, eval = F}
+#| code-line-numbers: '3'
+# Define the random forest
+heart_rf = rand_forest(
+  mode = "classification",
+  mtry = 3,
+  trees = 100,
+  min_n = 2
+) %>% set_engine(
+  engine = "ranger",
+  splitrule = "gini"
+)
+```
+:::
+
+::::
+
+---
+
+## Random forests в R
+
+Навчання випадкового лісу в R за допомогою `tidymodels`...
+
+:::: {.columns}
+
+::: {.column}
+... і `ranger`
+
+- Тип: Класифікація
+- Три змінні на поділ
+:::
+
+::: {.column}
+```{r, eval = F}
+#| code-line-numbers: '4'
+# Define the random forest
+heart_rf = rand_forest(
+  mode = "classification",
+  mtry = 3,
+  trees = 100,
+  min_n = 2
+) %>% set_engine(
+  engine = "ranger",
+  splitrule = "gini"
+)
+```
+:::
+
+::::
+
+---
+
+## Random forests в R
+
+Навчання випадкового лісу в R за допомогою `tidymodels`...
+
+:::: {.columns}
+
+::: {.column}
+... і `ranger`
+
+- Тип: Класифікація
+- Три змінні на поділ
+- 100 дерев у лісі
+:::
+
+::: {.column}
+```{r, eval = F}
+#| code-line-numbers: '5'
+# Define the random forest
+heart_rf = rand_forest(
+  mode = "classification",
+  mtry = 3,
+  trees = 100,
+  min_n = 2
+) %>% set_engine(
+  engine = "ranger",
+  splitrule = "gini"
+)
+```
+:::
+
+::::
+
+---
+
+## Random forests в R
+
+Навчання випадкового лісу в R за допомогою `tidymodels`...
+
+:::: {.columns}
+
+::: {.column}
+... і `ranger`
+
+- Тип: Класифікація
+- Три змінні на поділ
+- 100 дерев у лісі
+- Принаймні 2 спостереж. на поділ
+:::
+
+::: {.column}
+```{r, eval = F}
+#| code-line-numbers: '6'
+# Define the random forest
+heart_rf = rand_forest(
+  mode = "classification",
+  mtry = 3,
+  trees = 100,
+  min_n = 2
+) %>% set_engine(
+  engine = "ranger",
+  splitrule = "gini"
+)
+```
+:::
+
+::::
+
+---
+
+## Random forests в R
+
+Навчання випадкового лісу в R за допомогою `tidymodels`...
+
+:::: {.columns}
+
+::: {.column}
+... і `ranger`
+
+- Тип: Класифікація
+- Три змінні на поділ
+- 100 дерев у лісі
+- Принаймні 2 спостереж. на поділ
+- Движок `ranger`
+:::
+
+::: {.column}
+```{r, eval = F}
+#| code-line-numbers: '8'
+# Define the random forest
+heart_rf = rand_forest(
+  mode = "classification",
+  mtry = 3,
+  trees = 100,
+  min_n = 2
+) %>% set_engine(
+  engine = "ranger",
+  splitrule = "gini"
+)
+```
+:::
+
+::::
+
+---
+
+## Random forests в R
+
+Навчання випадкового лісу в R за допомогою `tidymodels`...
+
+:::: {.columns}
+
+::: {.column}
+... і `ranger`
+
+- Тип: Класифікація
+- Три змінні на поділ
+- 100 дерев у лісі
+- Принаймні 2 спостереж. на поділ
+- Движок `ranger`
+- Встановлення [правило поділу](https://dials.tidymodels.org/reference/ranger_parameters.html)
+:::
+
+::: {.column}
+```{r, eval = F}
+#| code-line-numbers: '9'
+# Define the random forest
+heart_rf = rand_forest(
+  mode = "classification",
+  mtry = 3,
+  trees = 100,
+  min_n = 2
+) %>% set_engine(
+  engine = "ranger",
+  splitrule = "gini"
+)
+```
+:::
+
+::::
+
+---
+
+**Крок 1:** Визначте нашу сітку параметрів
+
+```{r, rf-param, cache = T}
+# Define the parameter grid
+rf_grid = expand_grid(
+  mtry = 1:13,
+  min_n = 1:15
+)
+```
+
+---
+
+**Крок 2:** Напишіть функцію, яка оцінює RF, використовуючи [**задані гіперпараметри**]{.orange}.
+
+```{r, rf-fun, cache = T}
+#| code-line-numbers: '6,8'
+
+# Function: One set of hyperparam
+rf_i = function(i) {
+  # Define the random forest
+  heart_rf_i = rand_forest(
+    mode = "classification", 
+    mtry = rf_grid[i, 1],
+    trees = 100,
+    min_n = rf_grid[i, 2]
+  ) %>% set_engine(engine = "ranger", splitrule = "gini")
+  # Define workflow
+  heart_rf_wf_i = 
+    workflow() %>% add_model(heart_rf_i) %>% add_recipe(heart_recipe)
+  # Fit
+  heart_rf_fit_i = heart_rf_wf_i %>% fit(heart_df)
+  # Return DF w/ OOB error and the hyperparameters
+  return(tibble(
+    mtry = rf_grid$mtry[i],
+    min_n = rf_grid$min_n[i],
+    # Note: OOB error is buried
+    error_oob = heart_rf_fit_i$fit$fit$fit$prediction.error
+  ))
+}
+```
+
+---
+
+**Крок 3:** Оцініть RF (`parallel`)!
+
+```{r, rf-param-oob, cache = T, dependson = c(-2, -1)}
+# Fit the RFs on the grid
+rf_tuning = future_map_dfr(
+  1:nrow(rf_grid),
+  rf_i
+)
+```
+
+---
+
+**Точність** (OOB) по сітці наших параметрів.
+
+```{r, plot-rf-parameters, echo = F}
+ggplot(
+  data = rf_tuning,
+  aes(x = mtry, y = min_n, fill = 1-error_oob)
+) +
+geom_tile(color = "white", linewidth = 0.3) +
+scale_x_continuous("Number of variables at split (m)", breaks = 1:13) +
+scale_y_continuous("Min. leaf size", breaks = c(1, 5, 10, 15)) +
+scale_fill_viridis_c("Accuracy", option = "magma", labels = percent) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(
+  legend.position = "bottom",
+  legend.key.width = unit(3, "cm"),
+  panel.grid.minor = element_blank()
+)
+```
+
+---
+
+## {visibility="hidden"}
+
+:::: {.columns}
+
+::: {.column}
+```{r, sim-forest-size, cache = T}
+# Read data
+heart_df = read_csv("Heart.csv") %>%
+  dplyr::select(-1) %>%
+  rename(HeartDisease = AHD) %>%
+  clean_names()
+# Impute missing values
+heart_recipe = recipe(heart_disease ~ ., data = heart_df) %>% 
+  step_impute_median(all_predictors() & all_numeric()) %>% 
+  step_impute_mode(all_predictors() & all_nominal())
+heart_df = heart_recipe %>% prep() %>% juice()
+# Set the seed
+set.seed(12345)
+# Train the bagged trees
+rf_oob = future_lapply(
+  X = 2:300,
+  FUN = function(n) {
+    train(
+      heart_disease ~ .,
+      data = heart_df,
+      method = "ranger",
+      num.trees = n,
+      trControl = trainControl(
+        method = "oob"
+      ),
+      tuneGrid = data.frame(
+        "mtry" = 2,
+        "splitrule" = "gini",
+        "min.node.size" = 4
+      )
+    )$finalModel$prediction.error %>% subtract(1, .) %>%
+    data.frame(accuracy = ., n_trees = n)
+  }
+) %>% bind_rows()
+```
+:::
+
+::: {.column}
+```{r, sim-forest-size2, cache = T}
+# Set seed
+set.seed(6789)
+# Train the bagged trees
+rf_cv = future_lapply(
+  X = 2:300,
+  FUN = function(n) {
+    train(
+      heart_disease ~ .,
+      data = heart_df,
+      method = "ranger",
+      num.trees = n,
+      trControl = trainControl(
+        method = "cv",
+        number = 5
+      ),
+      tuneGrid = data.frame(
+        "mtry" = 2,
+        "splitrule" = "gini",
+        "min.node.size" = 4
+      )
+    )$finalModel$prediction.error %>% subtract(1, .) %>%
+    data.frame(accuracy = ., n_trees = n)
+  }
+) %>% bind_rows()
+```
+:::
+
+::::
+
+---
+
+**Ансамблі дерев і кількість дерев**
+
+```{r, plot-bag-rf, echo = F}
+ggplot(
+  data = bind_rows(
+    bag_oob %>% mutate(type = "Bagged, OOB"),
+    bag_cv %>% mutate(type = "Bagged, CV"),
+    rf_oob %>% mutate(type = "Random forest, OOB"),
+    rf_cv %>% mutate(type = "Random forest, CV")
+  ),
+  aes(x = n_trees, y = accuracy, color = type)
+) +
+geom_line() +
+scale_y_continuous("Accuracy", labels = scales::percent) +
+scale_x_continuous("Number of trees", labels = scales::comma) +
+scale_color_manual(
+  "[Method, Estimate]",
+  values = c(red_pink, purple, orange, slate)
+) +
+theme_minimal(base_size = 20, base_family = "Fira Sans Book") +
+theme(legend.position = "right") +
+coord_cartesian(ylim = c(0.60, 0.90))
+```
+
+# Boosting
+
+## Boosting
+
+Поки що елементи наших ансамблів виступають самостійно:
+<br> жодне окреме дерево нічого не знає про решту лісу.
+
+. . .
+
+[Boosting]{.attn} дозволяє деревам передавати інформацію одне одному.
+
+. . .
+
+Зокрема, [boosting]{.attn} навчає свої дерева *послідовно* — кожне нове дерево тренується на залишках (помилках) своїх попередників.
+
+. . .
+
+- Ми додаємо кожне нове дерево до нашої моделі $\hat{f}$ (і оновлюємо наші залишки).
+
+- Дерева, як правило, невеликі — повільно покращують $\hat{f}$.
+
+---
+
+## Boosting
+
+Boosting має три [tuning параметри]{.hi}.
+
+1. [Кількість дерев]{.hi} $\color{#e64173}{B}$ може бути важливим для запобігання overfitting
+
+. . .
+
+2.[Параметр зтиснення]{.hi} $\color{#e64173}{\lambda}$, який контролює *швидкість навчання* бустінгу (часто 0,01 або 0,001).
+
+. . .
+
+3. [Кількість поділів]{.hi} $\color{#e64173}{d}$ у кожному дереві (складність дерев).
+
+. . .
+
+   - Окремі дерева, як правило, короткі — часто $d=1$ («пні»).
+
+   - [Пам’ятайте]{.note} Дерева вчаться на помилках попередників,<br>тому жодне дерево не має бути ідеальною моделлю.
+
+---
+
+## How to boost
+
+[Крок 1:]{.hi-purple} Установіть $\color{#6A5ACD}{\mathop{\hat{f}}}(x) = 0$, що дає залишки $r_i = y_i$ для всіх $i$.
+
+. . .
+
+[Крок 2:]{.hi-pink} Для $\color{#e64173}{b} = 1,\,2\,\ldots,\, B$ виконайте:
+
+[**A.** Підберіть дерево $\color{#e64173}{\hat{f^b}}$ із розділенням $d$.]{.move-right}
+
+. . .
+
+[**B.** Оновити модель $\color{#6A5ACD}{\hat{f}}$ за допомогою «скороченої версії» нового дерева $\color{#e64173}{\hat{f^b}}$]{.move-right}
+
+$$
+\begin{align}
+  \color{#6A5ACD}{\mathop{\hat{f}}}(x) \leftarrow \color{#6A5ACD}{\mathop{\hat{f}}}(x) + \lambda \mathop{\color{#e64173}{\hat{f^b}}}(x)
+\end{align}
+$$
+
+. . .
+
+[**C.** Оновіть залишки: $r_i \leftarrow r_i - \lambda \mathop{\color{#e64173}{\hat{f^b}}}(x)$.]{.move-right}
+
+. . .
+
+[Крок 3:]{.hi-orange} Виведіть розширену модель:
+$\mathop{\color{#6A5ACD}{\hat{f}}}(x) = \sum_{b} \lambda \mathop{\color{#e64173}{\hat{f^b}}}(x)$.
+
+---
+
+**Boosted residuals: розширення**
+
+[Нагадування:]{.note} Boosting trains
+- [послідовні моделі]{.pink} $\color{#e64173}{\hat{f_{i}}}(y,x)$
+- на [залишки попередніх моделей]{.orange}, $\color{#FFA500}{r_{i-1}}$ (стиснуті на $\color{#6A5ACD}{\lambda}$)
+
+$$
+\begin{align}
+  \color{#FFA500}{r_0} &= y \\[1em]
+  \color{#FFA500}{r_1} &= \color{#FFA500}{r_0} - \color{#6A5ACD}{\lambda} \color{#e64173}{\hat{f_{1}}}(\color{#FFA500}{r_0}, x) \\[0.35em]
+  &= y - \color{#6A5ACD}{\lambda} \color{#e64173}{\hat{f_{1}}}(y, x) \\[1em]
+  \color{#FFA500}{r_2} &= \color{#FFA500}{r_1} - \color{#6A5ACD}{\lambda} \color{#e64173}{\hat{f_{2}}}(\color{#FFA500}{r_1}, x) \\[0.35em]
+  &= y - \color{#6A5ACD}{\lambda} \color{#e64173}{\hat{f_{1}}}(y, x) - \color{#6A5ACD}{\lambda} \color{#e64173}{\hat{f_{2}}}(y - \color{#6A5ACD}{\lambda} \color{#e64173}{\hat{f_{1}}}(y, x), x) \\[1em]
+  &\cdots
+\end{align}
+$$
+
+---
+
+## Boosting in R
+
+Ми будемо використовувати `boost_tree()` з `parsnips` для тренування boosting дерев[^33].
+
+[^33]: Цей метод використовує пакет `xgboost`.
+
+`boost_tree()` приймає кілька параметрів, які ви бачили, плюс ще один:
+
+1. `mtry` кількість предикторів для кожного розбиття
+2. `дерева`, кількість дерев $(B)$
+3. `min_n`, мінімум спостережень для розділення
+4. `tree_depth`, макс. глибина дерева
+5. `learn_rate`, швидкість навчання $(\lambda)$
+
+---
+
+## {visibility="hidden"}
+
+:::: {.columns}
+
+::: {.column}
+```{r, ex-boost, cache = T, message = F}
+# Set the seed
+set.seed(12345)
+# Train the random forest
+heart_boost = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "gbm",
+  trControl = trainControl(
+    method = "cv",
+    number = 5
+  ),
+  tuneGrid = expand.grid(
+    "n.trees" = seq(1, 300, by = 1),
+    "interaction.depth" = 1:3,
+    "shrinkage" = c(0.1, 0.01, 0.001),
+    "n.minobsinnode" = 5
+  )
+)
+```
+:::
+
+::: {.column}
+```{r, ex-boost-new, cache = T, message = F}
+# Set the seed
+set.seed(12345)
+# Train the random forest
+heart_boost = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "gbm",
+  trControl = trainControl(
+    method = "cv",
+    number = 5
+  ),
+  tuneGrid = expand.grid(
+    "n.trees" = seq(1, 1e4, by = 1),
+    "interaction.depth" = 1:3,
+    "shrinkage" = c(0.1, 0.01, 0.001),
+    "n.minobsinnode" = 5
+  )
+)
+```
+:::
+
+::::
+
+---
+
+## Boosting in R
+
+:::: {.columns}
+
+::: {.column width="40%"}
+```{r, eval = F}
+#| code-line-numbers: '7'
+
+# Set the seed
+set.seed(12345)
+# Train the random forest
+heart_boost = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "gbm",
+  trControl = trainControl(
+    method = "cv",
+    number = 5
+  ),
+  tuneGrid = expand.grid(
+    "n.trees" = seq(25, 200, by = 25),
+    "interaction.depth" = 1:3,
+    "shrinkage" = c(0.1, 0.01, 0.001),
+    "n.minobsinnode" = 5
+  )
+)
+```
+:::
+
+::: {.column width="60%"}
+- boosted за допомогою пакету `gbm`
+:::
+
+::::
+
+---
+
+## Boosting in R
+
+:::: {.columns}
+
+::: {.column width="40%"}
+```{r, eval = F}
+#| code-line-numbers: '9,10'
+
+# Set the seed
+set.seed(12345)
+# Train the random forest
+heart_boost = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "gbm",
+  trControl = trainControl(
+    method = "cv",
+    number = 5
+  ),
+  tuneGrid = expand.grid(
+    "n.trees" = seq(25, 200, by = 25),
+    "interaction.depth" = 1:3,
+    "shrinkage" = c(0.1, 0.01, 0.001),
+    "n.minobsinnode" = 5
+  )
+)
+```
+:::
+
+::: {.column width="60%"}
+- boosted за допомогою пакету `gbm`
+- перехресна перевірка (без OOB)
+:::
+
+::::
+
+---
+
+## Boosting in R
+
+:::: {.columns}
+
+::: {.column width="40%"}
+```{r, eval = F}
+#| code-line-numbers: '13'
+
+# Set the seed
+set.seed(12345)
+# Train the random forest
+heart_boost = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "gbm",
+  trControl = trainControl(
+    method = "cv",
+    number = 5
+  ),
+  tuneGrid = expand.grid(
+    "n.trees" = seq(25, 200, by = 25),
+    "interaction.depth" = 1:3,
+    "shrinkage" = c(0.1, 0.01, 0.001),
+    "n.minobsinnode" = 5
+  )
+)
+```
+:::
+
+::: {.column width="60%"}
+- boosted за допомогою пакету `gbm`
+- перехресна перевірка (без OOB)
+- CV-пошук пошук по сітці
+  - кількість дерев
+:::
+
+::::
+
+---
+
+## Boosting in R
+
+:::: {.columns}
+
+::: {.column width="40%"}
+```{r, eval = F}
+#| code-line-numbers: '14'
+
+# Set the seed
+set.seed(12345)
+# Train the random forest
+heart_boost = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "gbm",
+  trControl = trainControl(
+    method = "cv",
+    number = 5
+  ),
+  tuneGrid = expand.grid(
+    "n.trees" = seq(25, 200, by = 25),
+    "interaction.depth" = 1:3,
+    "shrinkage" = c(0.1, 0.01, 0.001),
+    "n.minobsinnode" = 5
+  )
+)
+```
+:::
+
+::: {.column width="60%"}
+- boosted за допомогою пакету `gbm`
+- перехресна перевірка (без OOB)
+- CV-пошук пошук по сітці
+  - кількість дерев
+  - глибина дерева
+:::
+
+::::
+
+---
+
+## Boosting in R
+
+:::: {.columns}
+
+::: {.column width="40%"}
+```{r, eval = F}
+#| code-line-numbers: '15'
+
+# Set the seed
+set.seed(12345)
+# Train the random forest
+heart_boost = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "gbm",
+  trControl = trainControl(
+    method = "cv",
+    number = 5
+  ),
+  tuneGrid = expand.grid(
+    "n.trees" = seq(25, 200, by = 25),
+    "interaction.depth" = 1:3,
+    "shrinkage" = c(0.1, 0.01, 0.001), #<<
+    "n.minobsinnode" = 5
+  )
+)
+```
+:::
+
+::: {.column width="60%"}
+- boosted за допомогою пакету `gbm`
+- перехресна перевірка (без OOB)
+- CV-пошук пошук по сітці
+  - кількість дерев
+  - глибина дерева
+  - швидкість навчання
+:::
+
+::::
+
+---
+
+## Boosting in R
+
+:::: {.columns}
+
+::: {.column width="40%"}
+```{r, eval = F}
+#| code-line-numbers: '16'
+
+# Set the seed
+set.seed(12345)
+# Train the random forest
+heart_boost = train(
+  heart_disease ~ .,
+  data = heart_df,
+  method = "gbm",
+  trControl = trainControl(
+    method = "cv",
+    number = 5
+  ),
+  tuneGrid = expand.grid(
+    "n.trees" = seq(25, 200, by = 25),
+    "interaction.depth" = 1:3,
+    "shrinkage" = c(0.1, 0.01, 0.001),
+    "n.minobsinnode" = 5 #<<
+  )
+)
+```
+:::
+
+::: {.column width="60%"}
+- boosted за допомогою пакету `gbm`
+- перехресна перевірка (без OOB)
+- CV-пошук пошук по сітці
+  - кількість дерев
+  - глибина дерева
+  - швидкість навчання
+  - мінімальний розмір листка
+:::
+
+::::
+
+---
+
+**Порівняння boosting параметрів** — зверніть увагу на швидкість навчання
+
+```{r, plot-boost-param, echo = F}
+ggplot(
+  data = heart_boost$results %>% filter(n.trees <= 300) %>% mutate(grp = paste(shrinkage, interaction.depth, sep = ", ")),
+  aes(
+    x = n.trees,
+    y = Accuracy,
+    color = as.character(interaction.depth),
+    linetype = as.character(shrinkage)
+  )
+) +
+geom_vline(xintercept = 204, size = 1.3, alpha = 0.3, color = red_pink) +
+geom_line(size = 0.4) +
+scale_y_continuous("Accuracy", labels = percent) +
+scale_x_continuous("Number of trees", labels = scales::comma) +
+scale_color_viridis_d("Tree depth", option = "magma", end = 0.85) +
+scale_linetype_manual("Shrinkage", values = c("longdash", "dotted", "solid")) +
+theme_minimal(base_size = 18, base_family = "Fira Sans Book")
+```
+
+---
+
+**Порівняння boosting параметрів** — більше дерев
+
+```{r, plot-boost-param-more, echo = F}
+ggplot(
+  data = heart_boost$results %>% mutate(grp = paste(shrinkage, interaction.depth, sep = ", ")) %>% filter(n.trees <= 1e3) %>% filter(n.trees %in% seq(1, 1e4, by = 5)),
+  aes(
+    x = n.trees,
+    y = Accuracy,
+    color = as.character(interaction.depth),
+    linetype = as.character(shrinkage)
+  )
+) +
+geom_vline(xintercept = 204, size = 1.3, alpha = 0.15, color = red_pink) +
+geom_vline(xintercept = 606, size = 1.3, alpha = 0.3, color = red_pink) +
+geom_line(size = 0.4) +
+scale_y_continuous("Accuracy", labels = percent) +
+scale_x_continuous("Number of trees", labels = scales::comma) +
+scale_color_viridis_d("Tree depth", option = "magma", end = 0.85) +
+scale_linetype_manual("Shrinkage", values = c("longdash", "dotted", "solid")) +
+theme_minimal(base_size = 18, base_family = "Fira Sans Book")
+```
+
+---
+
+**Порівняння boosting параметрів** — ще більше дерев
+
+```{r, plot-boost-param-even-more, echo = F}
+ggplot(
+  data = heart_boost$results %>% mutate(grp = paste(shrinkage, interaction.depth, sep = ", ")) %>% filter(n.trees %in% seq(1, 1e4, by = 15) | n.trees == 606) %>% filter(n.trees < 5e3),
+  aes(
+    x = n.trees,
+    y = Accuracy,
+    color = as.character(interaction.depth),
+    linetype = as.character(shrinkage)
+  )
+) +
+geom_vline(xintercept = 204, size = 1.3, alpha = 0.15, color = red_pink) +
+geom_vline(xintercept = 606, size = 1.3, alpha = 0.3, color = red_pink) +
+geom_line(size = 0.4) +
+scale_y_continuous("Accuracy", labels = percent) +
+scale_x_continuous("Number of trees", labels = scales::comma) +
+scale_color_viridis_d("Tree depth", option = "magma", end = 0.85) +
+scale_linetype_manual("Shrinkage", values = c("longdash", "dotted", "solid")) +
+theme_minimal(base_size = 18, base_family = "Fira Sans Book")
+```
+
+---
+
+**Порівняння boosting параметрів** — і ще більше дерев
+
+```{r, plot-boost-param-and-even-more, echo = F}
+ggplot(
+  data = heart_boost$results %>% mutate(grp = paste(shrinkage, interaction.depth, sep = ", ")) %>% filter(n.trees %in% seq(1, 1e4, by = 25) | n.trees == 606),
+  aes(
+    x = n.trees,
+    y = Accuracy,
+    color = as.character(interaction.depth),
+    linetype = as.character(shrinkage)
+  )
+) +
+geom_vline(xintercept = 204, size = 1.3, alpha = 0.15, color = red_pink) +
+geom_vline(xintercept = 606, size = 1.3, alpha = 0.3, color = red_pink) +
+geom_line(size = 0.4) +
+scale_y_continuous("Accuracy", labels = percent) +
+scale_x_continuous("Number of trees", labels = scales::comma) +
+scale_color_viridis_d("Tree depth", option = "magma", end = 0.85) +
+scale_linetype_manual("Shrinkage", values = c("longdash", "dotted", "solid")) +
+theme_minimal(base_size = 18, base_family = "Fira Sans Book")
+```
+
+---
+
+**Ансамблі дерев та кількість дерев**
+
+```{r, plot-bag-rf-boost, echo = F}
+ggplot(
+  data = bind_rows(
+    bag_oob %>% mutate(type = "Bagged, OOB"),
+    bag_cv %>% mutate(type = "Bagged, CV"),
+    rf_oob %>% mutate(type = "RF, OOB"),
+    rf_cv %>% mutate(type = "RF, CV"),
+    heart_boost$results %>% filter(
+      shrinkage == 0.1 &
+      interaction.depth == 1 &
+      between(n.trees, 2, 300)
+    ) %>% transmute(accuracy = Accuracy, n_trees = n.trees, type = "Boosted, CV")
+  ),
+  aes(x = n_trees, y = accuracy, color = type, size = type)
+) +
+geom_line() +
+scale_y_continuous("Accuracy", labels = scales::percent) +
+scale_x_continuous("Number of trees", labels = scales::comma) +
+scale_color_manual(
+  "[Method, Estimate]",
+  values = c(red_pink, purple, turquoise, orange, slate)
+) +
+scale_size_manual(
+  "[Method, Estimate]",
+  values = c(0.25, 0.25, 0.7, 0.25, 0.25)
+) +
+theme_minimal(base_size = 18, base_family = "Fira Sans Book") +
+theme(legend.position = "right") +
+coord_cartesian(ylim = c(0.60, 0.90))
+```
+
+---
+
+<br>
+<br>
+<br>
+<br>
+<br>
+Звичайно, є багато інших варіантів навчання на основі дерев:
+
+- [CatBoost](https://catboost.ai) ([R](https://catboost.ai/en/docs/concepts/r-installation))
+
+- [LightGBM](https://lightgbm.readthedocs.io/en/latest/) ([R](https://lightgbm.readthedocs.io/en/latest/R/index.html))
+
+- [TabNet](https://arxiv.org/abs/1908.07442) ([R](https://github.com/mlverse/tabnet/))
+
+
+
+# Дякую за увагу! {.unnumbered .unlisted}
+
+<br>
+<br>
+
+`r fa("telegram")` [Data Mirosh](https://t.me/araprof)
+
+`r fa("github")` [\@aranaur](https://github.com/Aranaur)
+
+`r fa("envelope")` ihor.miroshnychenko\@kneu.ua
+
+`r fa("linkedin")` [\@ihormiroshnychenko](https://www.linkedin.com/in/ihormiroshnychenko/)
+
+`r fa("house")` [aranaur.rbind.io](https://aranaur.rbind.io)
