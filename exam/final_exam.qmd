@@ -10,7 +10,7 @@ format: html
 
 - Ви повинні працювати над цим завданням **самостійно**. Якщо я підозрюю вас у шахрайстві, ви провалите цей курс.
 - Ви можете використовувати свої *конспекти*, *книги* та *Інтернет.*
-- **Термін виконанн**я: впродовж дня іспиту (30-05-2023).
+- **Термін виконанн**я: впродовж дня іспиту (`30-05-2023`).
 - **Форма звіту**: `PDF`, `HTML`, `DOCX` (GitHub, хмарні сервіси):
   + Варіант 1, надіслати посилання: [форма](https://forms.office.com/Pages/ResponsePage.aspx?id=7QRicv5S3kG0a2BBx8tS738LGDPg6zZBqr1qmv6Wxb5UQjg5VlVFNFVLTk1FTkM4QkNSNTRNVjNSSC4u).
   + Варіант 2, надіслати файл: [форма](https://forms.office.com/Pages/ResponsePage.aspx?id=7QRicv5S3kG0a2BBx8tS738LGDPg6zZBqr1qmv6Wxb5UMlRGTjVCNDhSWU9GVlUySjJZR0wzMVBaUC4u)[^1]
