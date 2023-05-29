@@ -77,22 +77,22 @@ ul.task-list li input[type="checkbox"] {
 <li><strong>Термін виконанн</strong>я: впродовж дня іспиту (30-05-2023).</li>
 <li><strong>Форма звіту</strong>: <code>PDF</code>, <code>HTML</code>, <code>DOCX</code> (GitHub, хмарні сервіси):
 <ul>
-<li>Надіслати посилання: <a href="https://forms.office.com/Pages/ResponsePage.aspx?id=7QRicv5S3kG0a2BBx8tS738LGDPg6zZBqr1qmv6Wxb5UQjg5VlVFNFVLTk1FTkM4QkNSNTRNVjNSSC4u">форма</a>.</li>
-<li>Надіслати файл: <a href="https://forms.office.com/Pages/ResponsePage.aspx?id=7QRicv5S3kG0a2BBx8tS738LGDPg6zZBqr1qmv6Wxb5UMlRGTjVCNDhSWU9GVlUySjJZR0wzMVBaUC4u">форма</a><a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></li>
+<li>Варіант 1, надіслати посилання: <a href="https://forms.office.com/Pages/ResponsePage.aspx?id=7QRicv5S3kG0a2BBx8tS738LGDPg6zZBqr1qmv6Wxb5UQjg5VlVFNFVLTk1FTkM4QkNSNTRNVjNSSC4u">форма</a>.</li>
+<li>Варіант 2, надіслати файл: <a href="https://forms.office.com/Pages/ResponsePage.aspx?id=7QRicv5S3kG0a2BBx8tS738LGDPg6zZBqr1qmv6Wxb5UMlRGTjVCNDhSWU9GVlUySjJZR0wzMVBaUC4u">форма</a><a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></li>
 </ul></li>
 </ul>
 </div>
 </div>
 <section id="завдання" class="level1">
 <h1>Завдання</h1>
-<p>Завантажте <a href="">файли</a>. У вас має бути три файли:</p>
+<p>Завантажте <a href="https://github.com/Aranaur/ML23/tree/main/exam/data">файли</a>. У вас має бути три файли:</p>
 <ul>
-<li>Навчальний набір даних (train.csv).</li>
-<li>Набір даних тестування (test.csv).</li>
-<li>Приклад того, як має виглядати ваш файл подання (sample-submission.csv).</li>
+<li>Навчальний набір даних (<code>train.csv</code>).</li>
+<li>Тестовий набір даних (<code>test.csv</code>).</li>
+<li>Приклад того, як має виглядати ваш submission-файл (<code>sample-submission.csv</code>).</li>
 </ul>
 <p>Дані отримані від ресторанів <a href="https://www.yelp.com/dataset">Yelp</a>.</p>
-<p>Ваша задача: Використовуйте дані ресторанів, щоб передбачити, чи матимуть вони рейтинг 4,5 зірки або вище.</p>
+<p><strong>Ваша задача: Використовуйте дані ресторанів, щоб передбачити, чи матимуть вони рейтинг 4.5 зірки або вище.</strong></p>
 <div class="callout callout-style-default callout-note callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -104,14 +104,14 @@ ul.task-list li input[type="checkbox"] {
 </div>
 <div class="callout-body-container callout-body">
 <p>Ви повинні будете використовувати числову змінну <code>stars</code> (рейтинги ресторанів), щоб створити власну змінну результату, яка буде <code>Yes</code>, якщо рейтинг ресторану становить 4.5 зірки або вище, і <code>No</code>, якщо середня оцінка ресторану нижче 4.5.</p>
-<p><em>Підказка:</em> Можливо, ви захочете викинути <code>stars</code> (тобто не використовуйте це для передбачення).</p>
+<p><em>Підказка:</em> Можливо, ви захочете викинути <code>stars</code> (тобто не використовуйте її для прогнозування).</p>
 </div>
 </div>
 <section id="основні-кроки" class="level2">
 <h2 class="anchored" data-anchor-id="основні-кроки">Основні кроки</h2>
 <ol type="1">
-<li>Завантажте дані та очистіть їх. Оберіть декілька змінних, які найкраще підходять для цієї задачі (мінімум 2). Поясніть свій вибір.</li>
-<li>Виберіть метод (наприклад, logistic elasticnet, random forest, boosted trees, SVM) для цієї задачі класифікації (прогнозування ресторанів із середнім рейтингом вище 4,5). Чому ви обрали цей метод?</li>
+<li>Завантажте дані та очистіть їх. Оберіть декілька змінних, які найкраще підходять для цієї задачі (мінімум 2). Поясніть свій вибір.<br></li>
+<li>Виберіть методи (наприклад, logistic elasticnet, random forest, boosted trees тощо) для цієї задачі класифікації (прогнозування ресторанів із середнім рейтингом вище 4,5). Чому ви обрали ці методи?</li>
 </ol>
 <div class="callout callout-style-default callout-tip callout-titled">
 <div class="callout-header d-flex align-content-center">
@@ -131,7 +131,7 @@ ul.task-list li input[type="checkbox"] {
 <li>Налаштуйте гіперпараметри вашої моделі. Опишіть, які гіперпараметри ви налаштували та які значення «вибрала» ваша модель.</li>
 <li>Оцініть <code>accuracy</code> вашої моделі на валідаційній вибірці.</li>
 <li>Оцініть <code>precision</code> вашої моделі на валідаційній вибірці.</li>
-<li>Навчіть свою найкращу модель на повному навчальному наборі даних. Прогнозуйте на тестовому наборі даних. Надішліть свої прогнози.</li>
+<li>Навчіть свою найкращу модель на повному навчальному наборі даних. Прогнозуйте на тестовому наборі даних. Оцініть ефективність. Збережіть свої прогнози.</li>
 </ol>
 </section>
 </section>
